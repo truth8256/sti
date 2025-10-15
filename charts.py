@@ -455,67 +455,6 @@ def render_prg_party_box(
           </div>
         </div>
         """
-        html_component(html, height=140, scrolling=False)
-
-    # --------- 여기서부터 기존 표시 로직 ---------
-    with st.container(border=True):
-        st.markdown("**진보당 현황**")
-
-        if prg_row is None or prg_row.empty:
-            st.info("진보당 관련 데이터가 없습니다. (선택된 행이 비어있음)")
-            return
-
-        df = prg_row.copy()
-        df.columns = [_norm(c) for c in df.columns]
-        r = df.iloc[0]
-
-        # 정확/부분 일치로 두 컬럼 찾기
-        def _pick_col(want: str) -> str | None:
-            want_n = _norm(want).lower()
-            mapping = {_norm(c).lower(): c for c in df.columns}
-            if want_n in mapping:
-                return mapping[want_n]
-            for k, orig in mapping.items():
-                if want_n in k:
-                    return orig
-            return None
-
-        col_strength = _pick_col("진보정당 득표력")
-        col_members  = _pick_col("진보당 당원수")
-
-        strength = _to_pct_float(r.get(col_strength)) if col_strength else None
-        members  = _to_int(r.get(col_members)) if col_members else None
-
-        if debug:
-            st.caption(f"[debug] 매칭: 득표력={col_strength!r}, 당원수={col_members!r}")
-            st.caption(f"[debug] 선택행 샘플: {r.to_dict()}")
-
-        # CSS 1회 주입
-        if "_css_prg_card_simple" not in st.session_state:
-            st.markdown("""
-            <style>
-              .prg-wrap { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
-              .metric-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 0; }
-              .metric-label { color:#6B7280; font-weight:600; font-size:0.95rem; }
-              .metric-value { font-weight:800; font-size:1.15rem; color:#111827; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; }
-              .divider { height:1px; background:#E5E7EB; margin:4px 0; width:70%; }
-            </style>
-            """, unsafe_allow_html=True)
-            st.session_state["_css_prg_card_simple"] = True
-
-        html = f"""
-        <div class="prg-wrap">
-          <div class="metric-box">
-            <div class="metric-label">진보 득표력</div>
-            <div class="metric-value">{_fmt_pct(strength)}</div>
-          </div>
-          <div class="divider"></div>
-          <div class="metric-box">
-            <div class="metric-label">진보당 당원수</div>
-            <div class="metric-value">{(f"{members:,}명" if isinstance(members, (int,float)) and members is not None else "N/A")}</div>
-          </div>
-        </div>
-        """
         html_component(html, height=150, scrolling=False)
 
 # =============================
@@ -560,6 +499,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
