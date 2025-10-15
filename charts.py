@@ -146,27 +146,27 @@ def render_population_box(pop_df: pd.DataFrame):
         st.info("유권자 이동, 연령 구성, 성비 차트 자리")
 
 # 24년 총선결과
-
+    # 색상 매핑
 def _party_chip_color(name: str) -> tuple[str, str]:
-    """이름 문자열에 정당명이 포함돼 있으면 칩 색상 반환 (텍스트색, 배경색)."""
     s = (name or "").strip()
     MAP = [
-        ("더불어민주당", ("#152484", "rgba(21, 36, 132, 0.08)")),
-        ("국민의힘",     ("#E61E2B", "rgba(230, 30, 43, 0.10)")),
-        ("개혁신당",     ("#798897", "rgba(121, 136, 151, 0.12)")),
+        ("더불어민주당", ("#152484", "rgba(21,36,132,0.08)")),
+        ("국민의힘",     ("#E61E2B", "rgba(230,30,43,0.10)")),
+        ("개혁신당",     ("#798897", "rgba(121,136,151,0.12)")),
     ]
     for key, col in MAP:
         if key in s:
             return col
-    return ("#334155", "rgba(51,65,85,0.07)")  # default
+    return ("#334155", "rgba(51,65,85,0.08)")  # default
 
 def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, code: str = None):
     if res_row is None or res_row.empty:
         st.info("해당 선거구의 24년 결과 데이터가 없습니다.")
         return
 
-    # 2024년 연도 선택
     res_row = _norm_cols(res_row)
+
+    # 2024 우선, 없으면 최신 연도 행 선택
     if "연도" in res_row.columns:
         try:
             cands = res_row.dropna(subset=["연도"]).copy()
@@ -180,10 +180,11 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
     else:
         r = res_row.iloc[0]
 
-    # 후보별 득표율 스캔
+    # 후보{n}_이름 / 후보{n}_득표율 전체 스캔 → 상위 2명
     import re
     cols = list(res_row.columns)
     name_cols = [c for c in cols if re.match(r"^후보\d+_이름$", c)]
+
     def share_col_for(n: str) -> str | None:
         for cand in [f"후보{n}_득표율", f"후보{n}_득표율(%)"]:
             if cand in res_row.columns:
@@ -201,12 +202,11 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         if nm and isinstance(sh, (int, float)):
             pairs.append((nm, sh))
 
-    # 상위 2명 선별
-    top2 = None
     if pairs:
         pairs_sorted = sorted(pairs, key=lambda x: x[1], reverse=True)
         top2 = pairs_sorted[:2] if len(pairs_sorted) >= 2 else [pairs_sorted[0], ("2위", None)]
-    if top2 is None:
+    else:
+        # 구형 스키마 fallback
         c1n = next((c for c in ["후보1_이름", "1위이름", "1위 후보"] if c in res_row.columns), None)
         c1v = next((c for c in ["후보1_득표율", "1위득표율", "1위득표율(%)"] if c in res_row.columns), None)
         c2n = next((c for c in ["후보2_이름", "2위이름", "2위 후보"] if c in res_row.columns), None)
@@ -217,65 +217,64 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
 
     name1, share1 = top2[0][0] or "1위", top2[0][1]
     name2, share2 = (top2[1][0] or "2위", top2[1][1]) if len(top2) > 1 else ("2위", None)
-    gap = round(share1 - share2, 2) if isinstance(share1, (int,float)) and isinstance(share2, (int,float)) \
-          else (compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None)
 
-# -------------------- 렌더링 (제목/테두리/3열 고정) --------------------
-with st.container(border=True):
-    # 제목은 기본 마크다운 스타일 유지 (폰트 크기/두께 Streamlit 기본값)
-    st.markdown("**24년 총선결과**")
+    if isinstance(share1, (int, float)) and isinstance(share2, (int, float)):
+        gap = round(share1 - share2, 2)
+    else:
+        gap = compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None
 
-    # 칩 색상 (텍스트/배경)
-    c1_fg, c1_bg = _party_chip_color(name1)
-    c2_fg, c2_bg = _party_chip_color(name2)
+    # ---------- 렌더링 ----------
+    with st.container(border=True):
+        # 제목은 Streamlit 기본 마크다운 굵게: 기존 스타일 유지
+        st.markdown("**24년 총선결과**")
 
-    # grid를 인라인 스타일로 강제 (3열 고정)
-    html = f"""
-    <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
-        <!-- 1위 -->
-        <div style="padding:10px 8px; text-align:center;">
-            <div style="
-                display:inline-flex; align-items:center; gap:6px;
-                padding:4px 8px; border-radius:999px;
-                font-weight:600; font-size:.98rem;
-                color:{c1_fg}; background:{c1_bg};">
-                {name1}
+        # 칩 색상은 여기서만 계산 (함수 밖 X)
+        c1_fg, c1_bg = _party_chip_color(name1)
+        c2_fg, c2_bg = _party_chip_color(name2)
+
+        html = f"""
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
+            <div style="padding:10px 8px; text-align:center;">
+                <div style="
+                    display:inline-flex; align-items:center; gap:6px;
+                    padding:4px 8px; border-radius:999px;
+                    font-weight:600; font-size:.98rem;
+                    color:{c1_fg}; background:{c1_bg};">
+                    {name1}
+                </div>
+                <div style="
+                    font-weight:700; font-size:1.05rem; margin-top:6px;
+                    font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                    {_fmt_pct(share1)}
+                </div>
             </div>
-            <div style="
-                font-weight:700; font-size:1.05rem; margin-top:6px;
-                font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
-                {_fmt_pct(share1)}
+
+            <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+                <div style="
+                    display:inline-flex; align-items:center; gap:6px;
+                    padding:4px 8px; border-radius:999px;
+                    font-weight:600; font-size:.98rem;
+                    color:{c2_fg}; background:{c2_bg};">
+                    {name2}
+                </div>
+                <div style="
+                    font-weight:700; font-size:1.05rem; margin-top:6px;
+                    font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                    {_fmt_pct(share2)}
+                </div>
+            </div>
+
+            <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+                <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
+                <div style="
+                    font-weight:700; font-size:1.05rem; margin-top:6px;
+                    font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#334155;">
+                    {_fmt_gap(gap)}
+                </div>
             </div>
         </div>
-
-        <!-- 세로 구분선 포함된 2위 -->
-        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-            <div style="
-                display:inline-flex; align-items:center; gap:6px;
-                padding:4px 8px; border-radius:999px;
-                font-weight:600; font-size:.98rem;
-                color:{c2_fg}; background:{c2_bg};">
-                {name2}
-            </div>
-            <div style="
-                font-weight:700; font-size:1.05rem; margin-top:6px;
-                font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
-                {_fmt_pct(share2)}
-            </div>
-        </div>
-
-        <!-- 격차 -->
-        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-            <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
-            <div style="
-                font-weight:700; font-size:1.05rem; margin-top:6px;
-                font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#334155;">
-                {_fmt_gap(gap)}
-            </div>
-        </div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+        """
+        st.markdown(html, unsafe_allow_html=True)
 
 
 # =============================
@@ -320,6 +319,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
