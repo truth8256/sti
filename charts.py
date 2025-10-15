@@ -337,91 +337,52 @@ def render_incumbent_card(cur_row: pd.DataFrame):
         html_component(html, height=150, scrolling=False)
 
 # 진보당 현황
-def render_prg_party_box(
-    prg_row: pd.DataFrame | None,
-    pop_row: pd.DataFrame | None = None,
-    *,
-    debug: bool = False
-):
-    """index_sample1012.csv의 '진보정당 득표력' '진보당 당원수'를 예쁘게 표시.
-    - prg_row: (선택된 지역 한 행) DataFrame
-    - debug=True로 호출하면 매칭된 컬럼/값을 캡션으로 보여줌
-    """
+def render_prg_party_box(prg_row: pd.DataFrame, pop_row: pd.DataFrame = None):
     from streamlit.components.v1 import html as html_component
 
     with st.container(border=True):
         st.markdown("**진보당 현황**")
 
         if prg_row is None or prg_row.empty:
-            st.info("진보당 관련 데이터가 없습니다. (행이 비어있음)")
+            st.info("진보당 관련 데이터가 없습니다.")
             return
 
-        # --- 컬럼명 정규화: 개행 제거 + 양끝 공백 제거 + 중복 공백 축소 ---
-        df = prg_row.copy()
-        def _norm_colname(s: str) -> str:
-            s = str(s).replace("\n", " ").replace("\r", " ").strip()
-            s = " ".join(s.split())  # 다중 공백 → 단일 공백
-            return s
-        df.columns = [_norm_colname(c) for c in df.columns]
+        df = _norm_cols(prg_row)
         r = df.iloc[0]
 
-        # --- 원하는 타깃명(정규화 기준) ---
-        TARGET_STRENGTH = "진보정당 득표력"
-        TARGET_MEMBERS  = "진보당 당원수"
-
-        # 매칭 유틸: 정규화 맵으로 완전/부분 일치 시도
-        cols_norm_map = {_norm_colname(c).lower(): c for c in df.columns}
-        def _pick_col(primary: str, aliases: list[str]) -> str | None:
-            keys = [_norm_colname(primary).lower()] + [_norm_colname(a).lower() for a in aliases]
-            # 1) 완전일치
-            for k in keys:
-                if k in cols_norm_map:
-                    return cols_norm_map[k]
-            # 2) 부분일치(예: '진보당 당원수' ⊂ '진보당 당원수 (명)')
-            for k in keys:
-                for kk, orig in cols_norm_map.items():
-                    if k in kk:
-                        return orig
-            return None
-
-        col_strength = _pick_col(TARGET_STRENGTH, ["진보당 득표력", "진보 득표력", "득표력"])
-        col_members  = _pick_col(TARGET_MEMBERS,  ["당원수", "당원 수", "회원수", "당원(명)"])
+        # --- 컬럼명 정리 ---
+        col_strength = next((c for c in df.columns if "진보정당 득표력" in c), None)
+        col_members  = next((c for c in df.columns if "진보당 당원수" in c), None)
 
         strength = _to_pct_float(r.get(col_strength)) if col_strength else None
         members  = _to_int(r.get(col_members)) if col_members else None
 
-        if debug:
-            st.caption(f"매칭된 컬럼 → 득표력: {col_strength!r}, 당원수: {col_members!r}")
-            st.caption(f"원본 컬럼들: {list(df.columns)}")
-
-        # --- 스타일(1회 주입) ---
-        if "_css_prg_card" not in st.session_state:
+        # --- CSS 1회 주입 ---
+        if "_css_prg_card_simple" not in st.session_state:
             st.markdown("""
             <style>
               .prg-wrap { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
-              .metric { text-align:center; }
-              .metric .label { color:#6B7280; font-weight:600; }
-              .metric .value { font-weight:800; font-size:1.15rem; color:#111827;
-                               font-variant-numeric: tabular-nums; letter-spacing:-0.2px; }
-              .chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
-              .chip { display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px;
-                      font-weight:600; font-size:.90rem; background:#F3F4F6; color:#374151; }
+              .metric-box { display:flex; flex-direction:column; align-items:center;
+                            justify-content:center; padding:8px 0; }
+              .metric-label { color:#6B7280; font-weight:600; font-size:0.95rem; }
+              .metric-value { font-weight:800; font-size:1.15rem; color:#111827;
+                              font-variant-numeric:tabular-nums; letter-spacing:-0.2px; }
+              .divider { height:1px; background:#E5E7EB; margin:4px 0; width:70%; }
             </style>
             """, unsafe_allow_html=True)
-            st.session_state["_css_prg_card"] = True
+            st.session_state["_css_prg_card_simple"] = True
 
-        chips = []
-        if col_members:
-            chips.append(f"<span class='chip'>당원 {members if members is not None else 'N/A'}명</span>")
-
+        # --- HTML 구성 ---
         html = f"""
         <div class="prg-wrap">
-          <div class="metric">
-            <div class="label">진보정당 득표력</div>
-            <div class="value">{_fmt_pct(strength)}</div>
+          <div class="metric-box">
+            <div class="metric-label">진보 득표력</div>
+            <div class="metric-value">{_fmt_pct(strength)}</div>
           </div>
-          <div class="chips">
-            {''.join(chips) if chips else "<span class='chip'>보조 지표 없음</span>"}
+          <div class="divider"></div>
+          <div class="metric-box">
+            <div class="metric-label">진보당 당원수</div>
+            <div class="metric-value">{_fmt_gap(members) if isinstance(members,float) else (f"{members:,}명" if members else "N/A")}</div>
           </div>
         </div>
         """
@@ -470,6 +431,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
