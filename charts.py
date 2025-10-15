@@ -194,15 +194,8 @@ def render_region_detail_layout(
     df_cur: pd.DataFrame | None = None,
     df_prg: pd.DataFrame | None = None,
 ):
-    """
-    지역별 페이지 전체 구조 틀
-    - 상단: 인구 정보 (1:1 비율)
-        - 왼쪽(1): 내부 1:2 비율 → 유권자 이동 / (연령 구성 + 성비)
-    - 중간: 정당성향별 득표추이 (단독)
-    - 하단: 24년 총선결과 / 현직 정보 / 진보당 현황 (1:1:1)
-    """
 
-    # ============ 상단 인구정보 ============ #
+    # ============ 상단: 인구정보 ============ #
     st.markdown("### 👥 인구 정보")
     top_left, top_right = st.columns(2)
 
@@ -220,10 +213,6 @@ def render_region_detail_layout(
             st.markdown("#### 성비")
             st.info("가로 막대차트 자리")
 
-    # 우측 패널: 현재는 population 요약 박스 호출
-    with top_right.container(border=True, height="stretch"):
-        render_population_box(df_pop)
-
     # ============ 중간: 득표 추이(실제 차트 호출) ============ #
     st.markdown("### 📈 정당성향별 득표추이")
     render_vote_trend_chart(df_trend)
@@ -237,4 +226,5 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
