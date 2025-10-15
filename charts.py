@@ -60,7 +60,7 @@ def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =============================
-# 내부: 파이차트
+# 파이차트트
 # =============================
 def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[str],
                width: int = 260, height: int = 260):
@@ -87,7 +87,7 @@ def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[
 
 
 # =============================
-# 기존 카드들
+# 지표
 # =============================
 def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, code: str = None):
     if res_row is None or res_row.empty:
@@ -195,11 +195,8 @@ def render_population_box(pop_df: pd.DataFrame):
 
 
 # =============================
-# 새 레이아웃
+# 레이아웃
 # =============================
-# -------------------------------
-# 지역별 상세 레이아웃
-# -------------------------------
 def render_region_detail_layout():
     """
     지역별 페이지 전체 구조 틀
@@ -252,5 +249,6 @@ def render_region_detail_layout():
     with col3.container(border=True):
         st.markdown("#### 진보당 현황")
         st.info("진보당 현황 카드 자리")
+
 
 
