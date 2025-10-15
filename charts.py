@@ -337,42 +337,63 @@ def render_incumbent_card(cur_row: pd.DataFrame):
         html_component(html, height=150, scrolling=False)
 
 # 진보당 현황
-def render_prg_party_box(prg_row: pd.DataFrame, pop_row: pd.DataFrame = None):
+def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | None = None, *, debug: bool = False):
     from streamlit.components.v1 import html as html_component
 
     with st.container(border=True):
         st.markdown("**진보당 현황**")
 
         if prg_row is None or prg_row.empty:
-            st.info("진보당 관련 데이터가 없습니다.")
+            st.info("진보당 관련 데이터가 없습니다. (선택된 행이 비어있음)")
             return
 
-        df = _norm_cols(prg_row)
+        # 컬럼명 정규화(개행/공백/중복공백 제거) 후 정확/부분 일치로 매칭
+        df = prg_row.copy()
+
+        def _norm(s: str) -> str:
+            s = str(s).replace("\n", " ").replace("\r", " ").strip()
+            return " ".join(s.split())
+
+        df.columns = [_norm(c) for c in df.columns]
         r = df.iloc[0]
 
-        # --- 컬럼명 정리 ---
-        col_strength = next((c for c in df.columns if "진보정당 득표력" in c), None)
-        col_members  = next((c for c in df.columns if "진보당 당원수" in c), None)
+        target_strength_key = "진보정당 득표력"
+        target_members_key  = "진보당 당원수"
+
+        # 정확 매칭 → 부분 일치 순으로 탐색
+        def _pick_col(want: str) -> str | None:
+            want_n = _norm(want).lower()
+            mapping = {_norm(c).lower(): c for c in df.columns}
+            if want_n in mapping:
+                return mapping[want_n]
+            for k, orig in mapping.items():
+                if want_n in k:
+                    return orig
+            return None
+
+        col_strength = _pick_col(target_strength_key)
+        col_members  = _pick_col(target_members_key)
 
         strength = _to_pct_float(r.get(col_strength)) if col_strength else None
         members  = _to_int(r.get(col_members)) if col_members else None
 
-        # --- CSS 1회 주입 ---
+        if debug:
+            st.caption(f"[debug] 매칭: 득표력={col_strength!r}, 당원수={col_members!r}")
+            st.caption(f"[debug] 컬럼들: {list(df.columns)}")
+
+        # CSS 1회 주입
         if "_css_prg_card_simple" not in st.session_state:
             st.markdown("""
             <style>
               .prg-wrap { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
-              .metric-box { display:flex; flex-direction:column; align-items:center;
-                            justify-content:center; padding:8px 0; }
+              .metric-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 0; }
               .metric-label { color:#6B7280; font-weight:600; font-size:0.95rem; }
-              .metric-value { font-weight:800; font-size:1.15rem; color:#111827;
-                              font-variant-numeric:tabular-nums; letter-spacing:-0.2px; }
+              .metric-value { font-weight:800; font-size:1.15rem; color:#111827; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; }
               .divider { height:1px; background:#E5E7EB; margin:4px 0; width:70%; }
             </style>
             """, unsafe_allow_html=True)
             st.session_state["_css_prg_card_simple"] = True
 
-        # --- HTML 구성 ---
         html = f"""
         <div class="prg-wrap">
           <div class="metric-box">
@@ -382,12 +403,11 @@ def render_prg_party_box(prg_row: pd.DataFrame, pop_row: pd.DataFrame = None):
           <div class="divider"></div>
           <div class="metric-box">
             <div class="metric-label">진보당 당원수</div>
-            <div class="metric-value">{_fmt_gap(members) if isinstance(members,float) else (f"{members:,}명" if members else "N/A")}</div>
+            <div class="metric-value">{(f"{members:,}명" if isinstance(members, (int, float)) and members is not None else "N/A")}</div>
           </div>
         </div>
         """
         html_component(html, height=150, scrolling=False)
-
 
 # =============================
 # 레이아웃
@@ -431,6 +451,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
