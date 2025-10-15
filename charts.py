@@ -273,7 +273,7 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         </div>
         """
         from streamlit.components.v1 import html as html_component
-        html_component(html, height=150, scrolling=False)
+        html_component(html, height=140, scrolling=False)
 
 # 현직 정보
 def render_incumbent_card(cur_row: pd.DataFrame):
@@ -359,7 +359,7 @@ def render_incumbent_card(cur_row: pd.DataFrame):
         </div>
         """
         # 높이는 150~180 정도
-        html_component(html, height=150, scrolling=False)
+        html_component(html, height=140, scrolling=False)
 
 # 진보당 현황
 def render_prg_party_box(
@@ -416,13 +416,8 @@ def render_prg_party_box(
 
         with left:
             st.metric("진보 득표력", _fmt_pct(strength))
-            # 진행바(HTML 없이)
-            prog = (strength/100.0) if isinstance(strength, (int, float)) else 0.0
-            st.progress(min(max(prog, 0.0), 1.0))
-
         with right:
             st.metric("진보당 당원수", f"{members:,}명" if isinstance(members, (int, float)) and members is not None else "N/A")
-            st.caption("조직 지표")
 
 # =============================
 # 레이아웃
@@ -466,6 +461,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
