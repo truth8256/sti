@@ -321,7 +321,7 @@ def render_incumbent_card(cur_row: pd.DataFrame):
         fg, bg = "#334155", "rgba(51,65,85,0.08)"
 
     # 렌더
-    with st.container(border=True, height=140):
+    with st.container(border=True):
         st.markdown("**현직정보**")
 
         html = f"""
@@ -358,6 +358,7 @@ def render_incumbent_card(cur_row: pd.DataFrame):
           </div>
         </div>
         """
+        html_component(html, height=140, scrolling=False)
 
 # 진보당 현황
 def render_prg_party_box(
@@ -459,6 +460,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
