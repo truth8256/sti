@@ -374,7 +374,7 @@ def render_prg_party_box(
         s = str(s).replace("\n", " ").replace("\r", " ").strip()
         return " ".join(s.split())
 
-    with st.container(border=True, height=140):
+    with st.container(border=True):
         st.markdown("**진보당 현황**")
         st.markdown("<div style='padding-top:4px;'></div>", unsafe_allow_html=True)
 
@@ -480,6 +480,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
