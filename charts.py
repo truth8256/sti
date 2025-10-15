@@ -197,39 +197,60 @@ def render_population_box(pop_df: pd.DataFrame):
 # =============================
 # 새 레이아웃
 # =============================
-def render_region_detail_layout(df_pop=None, df_trend=None, df_24=None, df_cur=None, df_prg=None):
-    """전체 레이아웃 배치"""
-    # 상단: 인구정보 (1:1)
+# -------------------------------
+# 지역별 상세 레이아웃
+# -------------------------------
+def render_region_detail_layout():
+    """
+    지역별 페이지 전체 구조 틀
+    - 상단: 인구 정보 (1:1 비율)
+        - 왼쪽(1): 내부 1:2 비율 → 유권자 이동 / (연령 구성 + 성비)
+    - 중간: 정당성향별 득표추이 (단독)
+    - 하단: 24년 총선결과 / 현직 정보 / 진보당 현황 (1:1:1)
+    """
+
+    # ============ 상단 인구정보 ============ #
     st.markdown("### 👥 인구 정보")
     top_left, top_right = st.columns(2)
 
-    # 왼쪽 내부 1:2
+    # 왼쪽: 다시 1:2로 세분
     left_small, left_large = top_left.columns([1, 2])
-    with left_small.container(border=True):
+
+    with left_small.container(border=True, height="stretch"):
         st.markdown("#### 유권자 이동")
-        st.info("세로 막대차트 자리")
+        st.info("세로 막대차트 (예: 인구 이동률) 준비중")
+
     with left_large:
-        c1, c2 = st.columns(2)
-        with c1.container(border=True):
+        subcol1, subcol2 = st.columns(2)
+        with subcol1.container(border=True, height="stretch"):
             st.markdown("#### 연령 구성")
-            st.info("파이차트 자리")
-        with c2.container(border=True):
+            st.info("파이차트 (예: 청년층/중년층/고령층 비율) 준비중")
+        with subcol2.container(border=True, height="stretch"):
             st.markdown("#### 성비")
-            st.info("가로 막대차트 자리")
+            st.info("가로 막대차트 (남/여 비율) 준비중")
 
-    with top_right.container(border=True):
-        render_population_box(df_pop)
+    with top_right.container(border=True, height="stretch"):
+        st.markdown("#### (추가 정보 공간)")
+        st.caption("추후 필요 시 우측 패널에 다른 지표 배치 가능")
 
-    # 중간: 득표추이
+    # ============ 중간: 득표 추이 ============ #
     st.markdown("### 📈 정당성향별 득표추이")
-    render_vote_trend_chart(df_trend)
+    with st.container(border=True):
+        st.info("꺾은선그래프 자리 (정당별 연도별 득표율)")
 
-    # 하단: 24년 / 현직 / 진보당
+    # ============ 하단: 24년 결과 / 현직 / 진보당 ============ #
     st.markdown("### 🗳️ 선거 결과 및 정치지형")
     col1, col2, col3 = st.columns(3)
-    with col1:
-        render_results_2024_card(df_24)
-    with col2:
-        render_incumbent_card(df_cur)
-    with col3:
-        render_prg_party_box(df_prg, df_pop)
+    with col1.container(border=True):
+        st.markdown("#### 24년 총선결과")
+        st.info("총선 결과 카드 자리")
+
+    with col2.container(border=True):
+        st.markdown("#### 현직 정보")
+        st.info("현직 의원 정보 카드 자리")
+
+    with col3.container(border=True):
+        st.markdown("#### 진보당 현황")
+        st.info("진보당 현황 카드 자리")
+
+
