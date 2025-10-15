@@ -224,57 +224,42 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         gap = compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None
 
     # ---------- 렌더링 ----------
-    with st.container(border=True):
-        # 제목은 Streamlit 기본 마크다운 굵게: 기존 스타일 유지
-        st.markdown("**24년 총선결과**")
+from streamlit.components.v1 import html as html_component
 
-        # 칩 색상은 여기서만 계산 (함수 밖 X)
-        c1_fg, c1_bg = _party_chip_color(name1)
-        c2_fg, c2_bg = _party_chip_color(name2)
+with st.container(border=True):
+    st.markdown("**24년 총선결과**")
 
-        html = f"""
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
-            <div style="padding:10px 8px; text-align:center;">
-                <div style="
-                    display:inline-flex; align-items:center; gap:6px;
-                    padding:4px 8px; border-radius:999px;
-                    font-weight:600; font-size:.98rem;
-                    color:{c1_fg}; background:{c1_bg};">
-                    {name1}
-                </div>
-                <div style="
-                    font-weight:700; font-size:1.05rem; margin-top:6px;
-                    font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
-                    {_fmt_pct(share1)}
-                </div>
-            </div>
+    c1_fg, c1_bg = _party_chip_color(name1)
+    c2_fg, c2_bg = _party_chip_color(name2)
 
-            <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-                <div style="
-                    display:inline-flex; align-items:center; gap:6px;
-                    padding:4px 8px; border-radius:999px;
-                    font-weight:600; font-size:.98rem;
-                    color:{c2_fg}; background:{c2_bg};">
-                    {name2}
-                </div>
-                <div style="
-                    font-weight:700; font-size:1.05rem; margin-top:6px;
-                    font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
-                    {_fmt_pct(share2)}
-                </div>
-            </div>
-
-            <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-                <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
-                <div style="
-                    font-weight:700; font-size:1.05rem; margin-top:6px;
-                    font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#334155;">
-                    {_fmt_gap(gap)}
-                </div>
+    html = f"""
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
+        <div style="padding:10px 8px; text-align:center;">
+            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+                        font-weight:600; font-size:.98rem; color:{c1_fg}; background:{c1_bg};">{name1}</div>
+            <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                {_fmt_pct(share1)}
             </div>
         </div>
-        """
-        st.markdown(html, unsafe_allow_html=True)
+
+        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+                        font-weight:600; font-size:.98rem; color:{c2_fg}; background:{c2_bg};">{name2}</div>
+            <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                {_fmt_pct(share2)}
+            </div>
+        </div>
+
+        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+            <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
+            <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#334155;">
+                {_fmt_gap(gap)}
+            </div>
+        </div>
+    </div>
+    """
+    # ✅ HTML 강제 렌더 (높이 필요시 조정: 120~160)
+    html_component(html, height=140, scrolling=False)
 
 
 # =============================
@@ -319,6 +304,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
