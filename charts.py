@@ -337,9 +337,75 @@ def render_incumbent_card(cur_row: pd.DataFrame):
         html_component(html, height=150, scrolling=False)
 
 # 진보당 현황
-def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | None = None, *, debug: bool = False):
+def render_prg_party_box(
+    prg_row: pd.DataFrame | None,
+    pop_row: pd.DataFrame | None = None,
+    *,
+    code: str | int | None = None,      # 선택된 지역 코드가 있으면 넣어주세요
+    region: str | None = None,          # 또는 지역명(선거구명)
+    debug: bool = False                 # True면 매칭 과정 캡션으로 보여줌
+):
+    """index_sample.csv에서 '진보정당 득표력', '진보당 당원수'를
+    각각 '진보 득표력', '진보당 당원수'로 깔끔히 표시.
+    prg_row가 비어오면 내부에서 index_sample.csv를 직접 읽어 code/region으로 1행을 찾아 씀.
+    """
     from streamlit.components.v1 import html as html_component
 
+    def _norm(s: str) -> str:
+        s = str(s).replace("\n", " ").replace("\r", " ").strip()
+        return " ".join(s.split())
+
+    # 필요시 CSV에서 직접 로드해 1행 선택
+    if prg_row is None or prg_row.empty:
+        # 1) CSV 로드
+        try:
+            df_all = pd.read_csv("/mnt/data/index_sample.csv")
+        except UnicodeDecodeError:
+            df_all = pd.read_csv("/mnt/data/index_sample.csv", encoding="cp949")
+        df_all = _norm_cols(df_all)
+        df_all.columns = [_norm(c) for c in df_all.columns]
+
+        # 2) 키 컬럼 추정
+        code_col = next((c for c in df_all.columns
+                         if c in ["code","코드","지역코드","선거구코드","행정구역코드"]), None)
+        name_col = next((c for c in df_all.columns
+                         if c in ["지역명","선거구명","지역구","지역","구시군"]), None)
+
+        prg_row = pd.DataFrame()
+
+        # 3) 매칭 로직
+        if code is not None and code_col:
+            # 문자열/숫자 혼합 대비
+            def _to_str(x): return _norm(x) if pd.notna(x) else ""
+            code_str = _norm(code)
+            # 정확 일치 우선
+            prg_row = df_all[_to_str(df_all[code_col]) == code_str].head(1)
+            # 숫자 일치 보조
+            if prg_row.empty:
+                try:
+                    code_num = pd.to_numeric(code_str, errors="coerce")
+                    col_num = pd.to_numeric(df_all[code_col], errors="coerce")
+                    prg_row = df_all[col_num == code_num].head(1)
+                except Exception:
+                    pass
+
+        if (prg_row is None or prg_row.empty) and region and name_col:
+            region_norm = _norm(region)
+            # 정확 일치
+            prg_row = df_all[_norm(df_all[name_col]) == region_norm].head(1)
+            # 부분 일치
+            if prg_row.empty:
+                prg_row = df_all[df_all[name_col].astype(str).str.contains(region_norm, na=False)].head(1)
+
+        # 마지막 안전장치: 그래도 비면 첫 행
+        if prg_row is None or prg_row.empty:
+            prg_row = df_all.head(1)
+
+        if debug:
+            st.caption(f"[debug] index_sample.csv 컬럼: {list(df_all.columns)}")
+            st.caption(f"[debug] code_col={code_col!r}, name_col={name_col!r}, 선택행 여부={not prg_row.empty}")
+
+    # --------- 여기서부터 기존 표시 로직 ---------
     with st.container(border=True):
         st.markdown("**진보당 현황**")
 
@@ -347,20 +413,11 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
             st.info("진보당 관련 데이터가 없습니다. (선택된 행이 비어있음)")
             return
 
-        # 컬럼명 정규화(개행/공백/중복공백 제거) 후 정확/부분 일치로 매칭
         df = prg_row.copy()
-
-        def _norm(s: str) -> str:
-            s = str(s).replace("\n", " ").replace("\r", " ").strip()
-            return " ".join(s.split())
-
         df.columns = [_norm(c) for c in df.columns]
         r = df.iloc[0]
 
-        target_strength_key = "진보정당 득표력"
-        target_members_key  = "진보당 당원수"
-
-        # 정확 매칭 → 부분 일치 순으로 탐색
+        # 정확/부분 일치로 두 컬럼 찾기
         def _pick_col(want: str) -> str | None:
             want_n = _norm(want).lower()
             mapping = {_norm(c).lower(): c for c in df.columns}
@@ -371,15 +428,15 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
                     return orig
             return None
 
-        col_strength = _pick_col(target_strength_key)
-        col_members  = _pick_col(target_members_key)
+        col_strength = _pick_col("진보정당 득표력")
+        col_members  = _pick_col("진보당 당원수")
 
         strength = _to_pct_float(r.get(col_strength)) if col_strength else None
         members  = _to_int(r.get(col_members)) if col_members else None
 
         if debug:
             st.caption(f"[debug] 매칭: 득표력={col_strength!r}, 당원수={col_members!r}")
-            st.caption(f"[debug] 컬럼들: {list(df.columns)}")
+            st.caption(f"[debug] 선택행 샘플: {r.to_dict()}")
 
         # CSS 1회 주입
         if "_css_prg_card_simple" not in st.session_state:
@@ -403,7 +460,7 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
           <div class="divider"></div>
           <div class="metric-box">
             <div class="metric-label">진보당 당원수</div>
-            <div class="metric-value">{(f"{members:,}명" if isinstance(members, (int, float)) and members is not None else "N/A")}</div>
+            <div class="metric-value">{(f"{members:,}명" if isinstance(members, (int,float)) and members is not None else "N/A")}</div>
           </div>
         </div>
         """
@@ -451,6 +508,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
