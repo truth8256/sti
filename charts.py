@@ -49,6 +49,31 @@ def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
     out.columns = [str(c).strip().replace("\n", "").replace("\r", "") for c in out.columns]
     return out
 
+def _load_index_df() -> pd.DataFrame | None:
+    candidate_paths = [
+        "sti/data/index_sample.csv",
+        "./sti/data/index_sample.csv",
+        "data/index_sample.csv",
+        "./data/index_sample.csv",
+        "index_sample.csv",
+        "/mnt/data/index_sample.csv",
+        "/mnt/data/index_sample1012.csv",
+    ]
+    for path in candidate_paths:
+        try:
+            return _norm_cols(pd.read_csv(path))
+        except FileNotFoundError:
+            continue
+        except UnicodeDecodeError:
+            try:
+                return _norm_cols(pd.read_csv(path, encoding="cp949"))
+            except Exception:
+                continue
+        except Exception:
+            continue
+    return None
+
+
 # =============================
 # 파이차트
 # =============================
@@ -535,6 +560,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
