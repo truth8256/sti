@@ -34,7 +34,7 @@ from charts import (
 # -----------------------------
 # Page Config
 # -----------------------------
-APP_TITLE = "지역구 선정 1단계 조사 결과 대시보드"
+APP_TITLE = "지역구 선정 1단계 조사 결과"
 
 st.set_page_config(
     page_title=APP_TITLE,
