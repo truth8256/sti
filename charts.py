@@ -72,7 +72,9 @@ def _load_index_df() -> pd.DataFrame | None:
         except Exception:
             continue
     return None
-
+    
+# 공통 카드 높이 (세 박스 동일)
+CARD_HEIGHT = 180  # 170~200 사이에서
 
 # =============================
 # 파이차트
@@ -480,6 +482,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
