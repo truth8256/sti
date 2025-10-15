@@ -146,7 +146,7 @@ def render_population_box(pop_df: pd.DataFrame):
         st.info("유권자 이동, 연령 구성, 성비 차트 자리")
 
 # 24년 총선결과
-    # 색상 매핑
+# ---- 색상 매핑 유틸 (전역 정의만) ----
 def _party_chip_color(name: str) -> tuple[str, str]:
     s = (name or "").strip()
     MAP = [
@@ -159,14 +159,18 @@ def _party_chip_color(name: str) -> tuple[str, str]:
             return col
     return ("#334155", "rgba(51,65,85,0.08)")  # default
 
+# ---- 24년 결과 카드 ----
 def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, code: str = None):
+    import re
+    from streamlit.components.v1 import html as html_component
+
     if res_row is None or res_row.empty:
         st.info("해당 선거구의 24년 결과 데이터가 없습니다.")
         return
 
     res_row = _norm_cols(res_row)
 
-    # 2024 우선, 없으면 최신 연도 행 선택
+    # 2024 우선, 없으면 최신 연도
     if "연도" in res_row.columns:
         try:
             cands = res_row.dropna(subset=["연도"]).copy()
@@ -180,23 +184,18 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
     else:
         r = res_row.iloc[0]
 
-    # 후보{n}_이름 / 후보{n}_득표율 전체 스캔 → 상위 2명
-    import re
-    cols = list(res_row.columns)
-    name_cols = [c for c in cols if re.match(r"^후보\d+_이름$", c)]
-
+    # 후보{n}_이름 / 후보{n}_득표율 → 상위 2명
+    name_cols = [c for c in res_row.columns if re.match(r"^후보\d+_이름$", c)]
     def share_col_for(n: str) -> str | None:
-        for cand in [f"후보{n}_득표율", f"후보{n}_득표율(%)"]:
+        for cand in (f"후보{n}_득표율", f"후보{n}_득표율(%)"):
             if cand in res_row.columns:
                 return cand
         return None
-
     pairs = []
     for nc in name_cols:
         n = re.findall(r"\d+", nc)[0]
         sc = share_col_for(n)
-        if sc is None:
-            continue
+        if not sc: continue
         nm = str(r.get(nc)) if pd.notna(r.get(nc)) else None
         sh = _to_pct_float(r.get(sc))
         if nm and isinstance(sh, (int, float)):
@@ -207,59 +206,52 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         top2 = pairs_sorted[:2] if len(pairs_sorted) >= 2 else [pairs_sorted[0], ("2위", None)]
     else:
         # 구형 스키마 fallback
-        c1n = next((c for c in ["후보1_이름", "1위이름", "1위 후보"] if c in res_row.columns), None)
-        c1v = next((c for c in ["후보1_득표율", "1위득표율", "1위득표율(%)"] if c in res_row.columns), None)
-        c2n = next((c for c in ["후보2_이름", "2위이름", "2위 후보"] if c in res_row.columns), None)
-        c2v = next((c for c in ["후보2_득표율", "2위득표율", "2위득표율(%)"] if c in res_row.columns), None)
+        c1n = next((c for c in ["후보1_이름","1위이름","1위 후보"] if c in res_row.columns), None)
+        c1v = next((c for c in ["후보1_득표율","1위득표율","1위득표율(%)"] if c in res_row.columns), None)
+        c2n = next((c for c in ["후보2_이름","2위이름","2위 후보"] if c in res_row.columns), None)
+        c2v = next((c for c in ["후보2_득표율","2위득표율","2위득표율(%)"] if c in res_row.columns), None)
         name1 = str(r.get(c1n)) if c1n else "1위"; share1 = _to_pct_float(r.get(c1v))
         name2 = str(r.get(c2n)) if c2n else "2위"; share2 = _to_pct_float(r.get(c2v))
         top2 = [(name1, share1), (name2, share2)]
 
     name1, share1 = top2[0][0] or "1위", top2[0][1]
     name2, share2 = (top2[1][0] or "2위", top2[1][1]) if len(top2) > 1 else ("2위", None)
+    gap = round(share1 - share2, 2) if isinstance(share1,(int,float)) and isinstance(share2,(int,float)) \
+          else (compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None)
 
-    if isinstance(share1, (int, float)) and isinstance(share2, (int, float)):
-        gap = round(share1 - share2, 2)
-    else:
-        gap = compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None
+    # ---- 렌더링(테두리/제목/3열 고정) ----
+    with st.container(border=True):
+        st.markdown("**24년 총선결과**")  # 제목은 기본 마크다운 스타일 유지
 
-    # ---------- 렌더링 ----------
-from streamlit.components.v1 import html as html_component
+        c1_fg, c1_bg = _party_chip_color(name1)
+        c2_fg, c2_bg = _party_chip_color(name2)
 
-with st.container(border=True):
-    st.markdown("**24년 총선결과**")
-
-    c1_fg, c1_bg = _party_chip_color(name1)
-    c2_fg, c2_bg = _party_chip_color(name2)
-
-    html = f"""
-    <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
-        <div style="padding:10px 8px; text-align:center;">
-            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
-                        font-weight:600; font-size:.98rem; color:{c1_fg}; background:{c1_bg};">{name1}</div>
-            <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
-                {_fmt_pct(share1)}
+        html = f"""
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
+            <div style="padding:10px 8px; text-align:center;">
+                <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+                            font-weight:600; font-size:.98rem; color:{c1_fg}; background:{c1_bg};">{name1}</div>
+                <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                    {_fmt_pct(share1)}
+                </div>
+            </div>
+            <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+                <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+                            font-weight:600; font-size:.98rem; color:{c2_fg}; background:{c2_bg};">{name2}</div>
+                <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                    {_fmt_pct(share2)}
+                </div>
+            </div>
+            <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+                <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
+                <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#334155;">
+                    {_fmt_gap(gap)}
+                </div>
             </div>
         </div>
-
-        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-            <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
-                        font-weight:600; font-size:.98rem; color:{c2_fg}; background:{c2_bg};">{name2}</div>
-            <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
-                {_fmt_pct(share2)}
-            </div>
-        </div>
-
-        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-            <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
-            <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#334155;">
-                {_fmt_gap(gap)}
-            </div>
-        </div>
-    </div>
-    """
-    # ✅ HTML 강제 렌더 (높이 필요시 조정: 120~160)
-    html_component(html, height=140, scrolling=False)
+        """
+        # HTML 강제 렌더: 높이 필요시 120~180 사이로 조정
+        html_component(html, height=150, scrolling=False)
 
 
 # =============================
@@ -304,6 +296,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
