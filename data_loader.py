@@ -157,7 +157,7 @@ def load_current_info(data_dir: Path) -> pd.DataFrame:
     return df
 
 
-def load_index_sample1012(data_dir: Path) -> pd.DataFrame:
+def load_index_sample(data_dir: Path) -> pd.DataFrame:
     """
     index_sample1012.csv (선택): 지표/스코어 샘플
     """
@@ -184,5 +184,5 @@ def load_all(data_dir: Union[str, Path]) -> dict:
         "vote_trend": load_vote_trend(data_dir),
         "results_2024": load_results_2024(data_dir),
         "current_info": load_current_info(data_dir),
-        "index_sample": load_index_sample1012(data_dir),
+        "index_sample": load_index_sample(data_dir),
     }
