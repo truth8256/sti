@@ -185,7 +185,7 @@ def render_population_box(pop_df: pd.DataFrame):
         st.info("유권자 이동, 연령 구성, 성비 차트 자리")
 
 # =============================
-# 레이아웃 (옵션 B: 실제 컴포넌트 호출)
+# 레이아웃
 # =============================
 def render_region_detail_layout(
     df_pop: pd.DataFrame | None = None,
@@ -237,3 +237,4 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
