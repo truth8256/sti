@@ -9,12 +9,12 @@ import pandas as pd
 from pathlib import Path
 
 from data_loader import (
-    load_population_agg,
-    load_party_labels,       # ✅ party_labels.csv
-    load_vote_trend,         # ✅ vote_trend.csv
-    load_results_2024,       # ✅ 5_na_dis_results.csv
-    load_current_info,       # ✅ current_info.csv
-    load_index_sample,       # ✅ index_sample1012.csv (선택)
+    load_population_agg,     # population.csv (구 단위 합계본)
+    load_party_labels,       # party_labels.csv
+    load_vote_trend,         # vote_trend.csv
+    load_results_2024,       # 5_na_dis_results.csv
+    load_current_info,       # current_info.csv
+    load_index_sample,       # index_sample1012.csv (선택)
 )
 
 from metrics import (
@@ -34,13 +34,13 @@ from charts import (
 # -----------------------------
 # Page Config
 # -----------------------------
+APP_TITLE = "지역구 선정 1단계 조사 결과 대시보드"
+
 st.set_page_config(
-    page_title="지역구 선정 1단계 조사 결과 대시보드",
+    page_title=APP_TITLE,
     page_icon="🗳️",
     layout="wide",
 )
-st.title("🗳️ 지역구 선정 1단계 조사 결과")
-st.caption("에스티아이")
 
 # ---------- Sidebar Navigation ----------
 st.sidebar.header("메뉴 선택")
@@ -60,8 +60,10 @@ NAME_CANDIDATES = ["지역구", "선거구", "선거구명", "지역명", "distr
 SIDO_CANDIDATES = ["시/도", "시도", "광역", "sido", "province"]
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or len(df) == 0:
-        return pd.DataFrame() if df is None else df
+    if df is None:
+        return pd.DataFrame()
+    if len(df) == 0:
+        return df
     df2 = df.copy()
     df2.columns = [str(c).strip().replace("\n", "").replace("\r", "") for c in df2.columns]
     return df2
@@ -164,6 +166,28 @@ def build_regions(primary_df: pd.DataFrame, *fallback_dfs: pd.DataFrame) -> pd.D
     return out
 
 # -----------------------------
+# 상단 바 렌더링 (지역별 분석에서만 사용)
+# -----------------------------
+def render_topbar(page_title: str | None):
+    """좌: 페이지별 동적 제목 / 우: 앱 제목(오른쪽 상단 고정)."""
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        if page_title:
+            st.title(page_title)
+        else:
+            # 선택 전에는 빈 영역 유지
+            st.write("")
+    with c2:
+        st.markdown(
+            f"""
+            <div style="text-align:right; font-weight:700; font-size:1.05rem;">
+                🗳️ {APP_TITLE}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+# -----------------------------
 # Load Data
 # -----------------------------
 with st.spinner("데이터 불러오는 중..."):
@@ -186,6 +210,10 @@ df_idx   = ensure_code_col(df_idx)
 # Page: 종합
 # -----------------------------
 if menu == "종합":
+    # 기존 형태 유지 (상단 큰 타이틀)
+    st.title("🗳️ 지역구 선정 1단계 조사 결과")
+    st.caption("에스티아이")
+
     c1, c2, c3 = st.columns(3)
     with c1:
         n_regions = 0
@@ -208,7 +236,8 @@ if menu == "종합":
         if sido_col:
             st.subheader("시/도별 지역구 개수")
             vc = (
-                base_for_sido[[sido_col, "코드"]].dropna()
+                base_for_sido[[sido_col, "코드"]]
+                .dropna(subset=[sido_col, "코드"])
                 .assign(코드=base_for_sido["코드"].astype(str).map(_canon_code))
                 .groupby(sido_col)["코드"].nunique()
                 .sort_values(ascending=False)
@@ -223,12 +252,28 @@ if menu == "종합":
 elif menu == "지역별 분석":
     regions = build_regions(df_pop, df_trend, df_24, df_curr)
     if regions.empty:
+        render_topbar(None)
         st.error("지역 목록을 만들 수 없습니다. (어느 데이터셋에도 '코드' 및 지역명 컬럼이 없음)")
         st.stop()
 
+    # 선택 전: placeholder를 가진 옵션으로 구성
+    PLACEHOLDER = "— 지역을 선택하세요 —"
+    options = [PLACEHOLDER] + regions["라벨"].tolist()
+
     st.sidebar.header("지역 선택")
-    sel_label = st.sidebar.selectbox("선거구를 선택하세요", regions["라벨"].tolist())
+    sel_label = st.sidebar.selectbox("선거구를 선택하세요", options, index=0)
+
+    # 아직 선택 안 됨 → 상단 우측 앱 제목만, 본문에는 안내 문구
+    if sel_label == PLACEHOLDER:
+        render_topbar(None)
+        st.subheader("지역을 선택하세요")
+        st.stop()
+
+    # 선택됨 → 코드 매핑
     sel_code = regions.loc[regions["라벨"] == sel_label, "코드"].iloc[0]
+
+    # 상단바: 왼쪽엔 지역명(동적 타이틀), 오른쪽엔 앱 제목
+    render_topbar(sel_label)
 
     col_left, col_right = st.columns([1.2, 1])
     with col_left:
@@ -245,7 +290,7 @@ elif menu == "지역별 분석":
     col_a, col_b = st.columns([0.9, 1.1])
     with col_a:
         st.subheader("진보당 현황")
-        prg_row = get_by_code(df_party, sel_code)   # ✅ party_labels에서 필요 필드 사용
+        prg_row = get_by_code(df_party, sel_code)   # party_labels에서 필요 필드 사용
         pop_row = get_by_code(df_pop, sel_code)
         render_prg_party_box(prg_row, pop_row)
     with col_b:
@@ -253,13 +298,14 @@ elif menu == "지역별 분석":
         ts = compute_trend_series(df_trend, sel_code)
         render_vote_trend_chart(ts)
 
-    summary = compute_summary_metrics(df_trend, df_24, df_idx, sel_code)
+    # 요약지표
+    summary = compute_summary_metrics(df_trend, df_24, df_idx, sel_code) or {}
     prg_val = summary.get("PL_prg_str")
     gap_val = summary.get("PL_gap_B")
     swing_val = summary.get("PL_swing_B")
     prg_text  = f"{float(prg_val):.2f}%" if isinstance(prg_val, (int, float)) and pd.notna(prg_val) else "N/A"
     gap_text  = f"{float(gap_val):.2f}p" if isinstance(gap_val, (int, float)) and pd.notna(gap_val) else "N/A"
-    swing_txt = str(swing_val) if swing_val is not None else "N/A"
+    swing_txt = str(swing_val) if swing_val is not None and str(swing_val) != "nan" else "N/A"
     st.caption(f"요약지표 · 진보정당득표력: {prg_text} · 유동성B: {swing_txt} · 경합도B: {gap_text}")
 
     st.divider()
@@ -270,8 +316,11 @@ elif menu == "지역별 분석":
 # Page: 데이터 설명
 # -----------------------------
 else:
+    st.title("🗳️ 지역구 선정 1단계 조사 결과")
+    st.caption("에스티아이")
+
     st.subheader("데이터 파일 설명")
-    st.write("- population.csv: 지역구별 인구/유권자 구조")
+    st.write("- population.csv: 지역구별 인구/유권자 구조 (구 단위 합계본)")
     st.write("- 5_na_dis_results.csv: 2024 총선 지역구별 1·2위 득표 정보")
     st.write("- current_info.csv: 현직 의원 기본 정보")
     st.write("- vote_trend.csv: 선거별 정당 성향 득표 추이")
