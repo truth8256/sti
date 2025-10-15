@@ -1,6 +1,3 @@
-# =============================
-# File: app.py
-# =============================
 from __future__ import annotations
 
 import re
@@ -23,13 +20,9 @@ from metrics import (
     compute_24_gap,
 )
 
+# 옵션 B: 레이아웃 함수만 불러오면 됩니다
 from charts import (
-    render_population_box,
-    render_vote_trend_chart,
-    render_results_2024_card,
-    render_incumbent_card,
-    render_prg_party_box,
-    render_region_detail_layout,  # ✅ 레이아웃 함수 임포트
+    render_region_detail_layout,
 )
 
 # -----------------------------
@@ -279,7 +272,7 @@ elif menu == "지역별 분석":
     cur_sel   = get_by_code(df_curr, sel_code)
     prg_sel   = get_by_code(df_party, sel_code)
 
-    # 상세 레이아웃 렌더링 (charts.py)
+    # 상세 레이아웃 렌더링 (charts.py 내부에서 각 카드/차트 호출)
     render_region_detail_layout(
         df_pop=pop_sel,
         df_trend=trend_sel,
