@@ -79,17 +79,6 @@ def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[
 # 지표 컴포넌트
 # =============================
 
-def render_prg_party_box(prg_row: pd.DataFrame, pop_row: pd.DataFrame):
-    with st.container(border=True):
-        st.markdown("**진보당 현황**")
-        if prg_row is None or prg_row.empty:
-            st.info("진보당 관련 데이터가 없습니다.")
-            return
-        prg_row = _norm_cols(prg_row)
-        r = prg_row.iloc[0]
-        strength_col = next((c for c in ["진보당 득표력", "득표력"] if c in prg_row.columns), None)
-        st.metric("진보득표력", _fmt_pct(_to_pct_float(r.get(strength_col))))
-
 def render_vote_trend_chart(ts: pd.DataFrame):
     if ts is None or ts.empty:
         st.info("득표 추이 데이터가 없습니다.")
@@ -347,6 +336,79 @@ def render_incumbent_card(cur_row: pd.DataFrame):
         # 높이는 150~180 정도
         html_component(html, height=150, scrolling=False)
 
+# 진보당 현황
+def render_prg_party_box(prg_row: pd.DataFrame, pop_row: pd.DataFrame = None):
+    from streamlit.components.v1 import html as html_component
+
+    with st.container(border=True):
+        st.markdown("**진보당 현황**")
+
+        if prg_row is None or prg_row.empty:
+            st.info("진보당 관련 데이터가 없습니다.")
+            return
+
+        df = _norm_cols(prg_row)
+        r = df.iloc[0]
+
+        # 정확 매칭 우선, 없으면 유사 후보로 fallback
+        def pick_col(primary: list[str], fallback: list[str] = None):
+            cand = primary + (fallback or [])
+            for c in cand:
+                if c in df.columns:
+                    return c
+            # 소문자/공백 무시 부분일치도 마지막 시도
+            cols_norm = {str(c).strip().lower(): c for c in df.columns}
+            for c in cand:
+                key = str(c).strip().lower()
+                if key in cols_norm:
+                    return cols_norm[key]
+                for k, orig in cols_norm.items():
+                    if key in k:
+                        return orig
+            return None
+
+        strength_col = pick_col(
+            ["진보정당 득표력"], ["진보당 득표력", "득표력", "진보 득표력"]
+        )
+        member_col = pick_col(
+            ["진보당 당원수"], ["당원수", "당원 수", "회원수"]
+        )
+
+        strength = _to_pct_float(r.get(strength_col)) if strength_col else None
+        members  = _to_int(r.get(member_col)) if member_col else None
+
+        # 스타일 1회 주입
+        if "_css_prg_card" not in st.session_state:
+            st.markdown("""
+            <style>
+              .prg-wrap { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
+              .metric { text-align:center; }
+              .metric .label { color:#6B7280; font-weight:600; }
+              .metric .value { font-weight:800; font-size:1.15rem; color:#111827;
+                               font-variant-numeric: tabular-nums; letter-spacing:-0.2px; }
+              .chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+              .chip { display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px;
+                      font-weight:600; font-size:.90rem; background:#F3F4F6; color:#374151; }
+            </style>
+            """, unsafe_allow_html=True)
+            st.session_state["_css_prg_card"] = True
+
+        chips = []
+        chips.append(f"<span class='chip'>당원 {_to_int(members) if members is not None else 'N/A'}명</span>") if member_col else None
+
+        html = f"""
+        <div class="prg-wrap">
+          <div class="metric">
+            <div class="label">진보정당 득표력</div>
+            <div class="value">{_fmt_pct(strength)}</div>
+          </div>
+          <div class="chips">
+            {''.join(chips) if chips else "<span class='chip'>보조 지표 없음</span>"}
+          </div>
+        </div>
+        """
+        html_component(html, height=150, scrolling=False)
+
 
 # =============================
 # 레이아웃
@@ -390,6 +452,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
