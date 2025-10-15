@@ -221,37 +221,64 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
 
     # ---- 렌더링(테두리/제목/3열 고정) ----
     with st.container(border=True):
-        st.markdown("**24년 총선결과**")  # 제목은 기본 마크다운 스타일 유지
-
+        st.markdown("**24년 총선결과**")
+    
         c1_fg, c1_bg = _party_chip_color(name1)
         c2_fg, c2_bg = _party_chip_color(name2)
-
+    
+        # 정당명/후보명 분리 (엔터 삽입)
+        def split_name(nm: str):
+            # “정당 후보명” 구조를 줄바꿈 처리
+            parts = nm.strip().split()
+            if len(parts) >= 2:
+                return parts[0], " ".join(parts[1:])
+            return nm, ""
+        p1, cand1 = split_name(name1)
+        p2, cand2 = split_name(name2)
+    
         html = f"""
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
             <div style="padding:10px 8px; text-align:center;">
-                <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
-                            font-weight:600; font-size:.98rem; color:{c1_fg}; background:{c1_bg};">{name1}</div>
-                <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                <div style="
+                    display:inline-flex; flex-direction:column; align-items:center;
+                    padding:6px 10px; border-radius:14px;
+                    font-weight:600; font-size:.95rem;
+                    color:{c1_fg}; background:{c1_bg}; line-height:1.2;">
+                    <span style="opacity:0.9;">{p1}</span>
+                    <span style="color:#111827;">{cand1}</span>
+                </div>
+                <div style="font-weight:700; font-size:1.05rem; margin-top:8px;
+                            font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
                     {_fmt_pct(share1)}
                 </div>
             </div>
+    
             <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
-                <div style="display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
-                            font-weight:600; font-size:.98rem; color:{c2_fg}; background:{c2_bg};">{name2}</div>
-                <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                <div style="
+                    display:inline-flex; flex-direction:column; align-items:center;
+                    padding:6px 10px; border-radius:14px;
+                    font-weight:600; font-size:.95rem;
+                    color:{c2_fg}; background:{c2_bg}; line-height:1.2;">
+                    <span style="opacity:0.9;">{p2}</span>
+                    <span style="color:#111827;">{cand2}</span>
+                </div>
+                <div style="font-weight:700; font-size:1.05rem; margin-top:8px;
+                            font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#111827;">
                     {_fmt_pct(share2)}
                 </div>
             </div>
+    
             <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
                 <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
-                <div style="font-weight:700; font-size:1.05rem; margin-top:6px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#334155;">
+                <div style="font-weight:700; font-size:1.05rem; margin-top:8px;
+                            font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:#334155;">
                     {_fmt_gap(gap)}
                 </div>
             </div>
         </div>
         """
-        # HTML 강제 렌더: 높이 필요시 120~180 사이로 조정
-        html_component(html, height=150, scrolling=False)
+        from streamlit.components.v1 import html as html_component
+        html_component(html, height=160, scrolling=False)
 
 
 # =============================
@@ -296,6 +323,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
