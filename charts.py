@@ -145,22 +145,28 @@ def render_population_box(pop_df: pd.DataFrame):
         # 일단은 자리: 다음 단계에서 실제 세로막대/파이/가로막대로 연결
         st.info("유권자 이동, 연령 구성, 성비 차트 자리")
 
+# 24년 총선결과
+
+def _party_chip_color(name: str) -> tuple[str, str]:
+    """이름 문자열에 정당명이 포함돼 있으면 칩 색상 반환 (텍스트색, 배경색)."""
+    s = (name or "").strip()
+    MAP = [
+        ("더불어민주당", ("#152484", "rgba(21, 36, 132, 0.08)")),
+        ("국민의힘",     ("#E61E2B", "rgba(230, 30, 43, 0.10)")),
+        ("개혁신당",     ("#798897", "rgba(121, 136, 151, 0.12)")),
+    ]
+    for key, col in MAP:
+        if key in s:
+            return col
+    return ("#334155", "rgba(51,65,85,0.07)")  # default
 
 def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, code: str = None):
-    """
-    2024년(or 최신연도) 결과에서 후보{n}_이름 / 후보{n}_득표율 패턴을 전수 스캔해
-    실제 득표율 상위 2명을 자동 선별하여 표시.
-    - 퍼센트 문자열('45%')/소수(0.45)/숫자(45) 모두 허용(_to_pct_float 사용)
-    - 후보1/후보2 고정이 아니라, 후보3이 1등인 경우도 정확히 집계
-    - 기존 1위이름/1위득표율 같은 컬럼은 fallback로만 사용
-    """
     if res_row is None or res_row.empty:
         st.info("해당 선거구의 24년 결과 데이터가 없습니다.")
         return
 
+    # 2024년 연도 선택
     res_row = _norm_cols(res_row)
-
-    # --- 2024 우선, 없으면 최신 연도 행 선택 ---
     if "연도" in res_row.columns:
         try:
             cands = res_row.dropna(subset=["연도"]).copy()
@@ -174,21 +180,19 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
     else:
         r = res_row.iloc[0]
 
-    # --- 후보{n}_이름 / 후보{n}_득표율 패턴 전수 스캔 ---
+    # 후보별 득표율 스캔
     import re
     cols = list(res_row.columns)
     name_cols = [c for c in cols if re.match(r"^후보\d+_이름$", c)]
-    # 득표율 컬럼 후보: 일반/괄호% 표기 모두 대응
     def share_col_for(n: str) -> str | None:
         for cand in [f"후보{n}_득표율", f"후보{n}_득표율(%)"]:
             if cand in res_row.columns:
                 return cand
         return None
 
-    # (이름, 득표율값) 리스트 구성
     pairs = []
     for nc in name_cols:
-        n = re.findall(r"\d+", nc)[0]  # 후보 번호
+        n = re.findall(r"\d+", nc)[0]
         sc = share_col_for(n)
         if sc is None:
             continue
@@ -197,61 +201,74 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         if nm and isinstance(sh, (int, float)):
             pairs.append((nm, sh))
 
-    # --- 상위 2명 선별 ---
+    # 상위 2명 선별
     top2 = None
     if pairs:
         pairs_sorted = sorted(pairs, key=lambda x: x[1], reverse=True)
-        if len(pairs_sorted) == 1:
-            top2 = [pairs_sorted[0], ("2위", None)]
-        else:
-            top2 = pairs_sorted[:2]
-
-    # --- fallback: 기존 1위/2위 컬럼(데이터가 구형 스키마일 때) ---
+        top2 = pairs_sorted[:2] if len(pairs_sorted) >= 2 else [pairs_sorted[0], ("2위", None)]
     if top2 is None:
         c1n = next((c for c in ["후보1_이름", "1위이름", "1위 후보"] if c in res_row.columns), None)
         c1v = next((c for c in ["후보1_득표율", "1위득표율", "1위득표율(%)"] if c in res_row.columns), None)
         c2n = next((c for c in ["후보2_이름", "2위이름", "2위 후보"] if c in res_row.columns), None)
         c2v = next((c for c in ["후보2_득표율", "2위득표율", "2위득표율(%)"] if c in res_row.columns), None)
-
-        name1 = str(r.get(c1n)) if c1n else "1위"
-        share1 = _to_pct_float(r.get(c1v))
-        name2 = str(r.get(c2n)) if c2n else "2위"
-        share2 = _to_pct_float(r.get(c2v))
+        name1 = str(r.get(c1n)) if c1n else "1위"; share1 = _to_pct_float(r.get(c1v))
+        name2 = str(r.get(c2n)) if c2n else "2위"; share2 = _to_pct_float(r.get(c2v))
         top2 = [(name1, share1), (name2, share2)]
 
-    # --- 격차 계산 (가능하면 직접, 아니면 compute_24_gap) ---
-    share1 = top2[0][1]
-    share2 = top2[1][1] if len(top2) > 1 else None
-    if isinstance(share1, (int, float)) and isinstance(share2, (int, float)):
-        gap = round(share1 - share2, 2)
-    else:
-        gap = compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None
+    name1, share1 = top2[0][0] or "1위", top2[0][1]
+    name2, share2 = (top2[1][0] or "2위", top2[1][1]) if len(top2) > 1 else ("2위", None)
+    gap = round(share1 - share2, 2) if isinstance(share1, (int,float)) and isinstance(share2, (int,float)) \
+          else (compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None)
 
-    # --- 렌더링 (제목과 같은 글씨 크기) ---
-    with st.container(border=True):
-        st.markdown("**24년 총선결과**")
+    # 스타일
+    if "_css_res24" not in st.session_state:
+        st.markdown("""
+        <style>
+        .res24-card { border:1px solid #E5E7EB; border-radius:12px; padding:12px 14px; background:#fff; }
+        .res24-grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:0; align-items:center; }
+        .res24-cell { padding:10px 8px; text-align:center; }
+        .res24-cell + .res24-cell { border-left:1px solid #EEF2F7; }  /* 세로 구분선 */
+        .res24-title { font-weight:700; font-size:1.05rem; margin:0 0 6px 0; }
+        .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-weight:600; font-size:.98rem; }
+        .name { font-weight:600; font-size:.98rem; line-height:1.25; }
+        .value { font-weight:700; font-size:1.05rem; margin-top:6px;
+                 font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;}
+        .muted { color:#6B7280; font-weight:600; }
+        .value-muted { color:#334155; }
+        </style>
+        """, unsafe_allow_html=True)
+        st.session_state["_css_res24"] = True
 
-        # 후보명이 없는 경우 대비
-        name1 = top2[0][0] if top2 and top2[0][0] else "1위"
-        name2 = top2[1][0] if len(top2) > 1 and top2[1][0] else "2위"
+    # 칩 색상
+    c1_fg, c1_bg = _party_chip_color(name1)
+    c2_fg, c2_bg = _party_chip_color(name2)
+
+    with st.container(border=False):
+        st.markdown("<div class='res24-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='res24-title'>24년 총선결과</div>", unsafe_allow_html=True)
 
         html = f"""
-        <div style='display:flex; justify-content:space-between; margin-top:10px;'>
-            <div style='text-align:center; width:32%;'>
-                <div style='font-size:1.05rem; font-weight:600;'>{name1}</div>
-                <div style='font-size:1.05rem; font-weight:600; color:#2B4162;'>{_fmt_pct(share1)}</div>
+        <div class="res24-grid">
+            <div class="res24-cell">
+                <div class="chip" style="color:{c1_fg}; background:{c1_bg};">
+                    <span class="name">{name1}</span>
+                </div>
+                <div class="value">{_fmt_pct(share1)}</div>
             </div>
-            <div style='text-align:center; width:32%;'>
-                <div style='font-size:1.05rem; font-weight:600;'>{name2}</div>
-                <div style='font-size:1.05rem; font-weight:600; color:#2B4162;'>{_fmt_pct(share2)}</div>
+            <div class="res24-cell">
+                <div class="chip" style="color:{c2_fg}; background:{c2_bg};">
+                    <span class="name">{name2}</span>
+                </div>
+                <div class="value">{_fmt_pct(share2)}</div>
             </div>
-            <div style='text-align:center; width:32%;'>
-                <div style='font-size:1.05rem; font-weight:600;'>1~2위 격차</div>
-                <div style='font-size:1.05rem; font-weight:600; color:#2B4162;'>{_fmt_gap(gap)}</div>
+            <div class="res24-cell">
+                <div class="muted">1~2위 격차</div>
+                <div class="value value-muted">{_fmt_gap(gap)}</div>
             </div>
         </div>
         """
         st.markdown(html, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # =============================
@@ -296,6 +313,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
