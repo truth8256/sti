@@ -289,47 +289,13 @@ def render_region_detail_layout(
 
     # ============ 하단: 24년 결과 / 현직 / 진보당 (실제 컴포넌트 호출) ============ #
     st.markdown("### 🗳️ 선거 결과 및 정치지형")
-
-# CSS로 동일 높이 컨테이너 스타일 적용
-st.markdown("""
-    <style>
-    .equal-card {
-        background-color: rgba(240, 242, 246, 0.6);
-        border: 1px solid #d9d9d9;
-        border-radius: 10px;
-        padding: 15px 18px;
-        height: 340px;              /* ✅ 동일 높이 (필요시 조정) */
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;  /* 내용 아래 여백 자연스럽게 분배 */
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    .equal-card h3, .equal-card h4, .equal-card strong {
-        margin-top: 0;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    with st.container():
-        st.markdown("<div class='equal-card'>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3)
+    with col1:
         render_results_2024_card(df_24)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-with col2:
-    with st.container():
-        st.markdown("<div class='equal-card'>", unsafe_allow_html=True)
+    with col2:
         render_incumbent_card(df_cur)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-with col3:
-    with st.container():
-        st.markdown("<div class='equal-card'>", unsafe_allow_html=True)
+    with col3:
         render_prg_party_box(df_prg, df_pop)
-        st.markdown("</div>", unsafe_allow_html=True)
-
 
 
 
