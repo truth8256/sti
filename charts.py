@@ -273,7 +273,7 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         </div>
         """
         from streamlit.components.v1 import html as html_component
-        html_component(html, height=140, scrolling=False)
+        html_component(html, height=CARD_HEIGHT, scrolling=False)
 
 # 현직 정보
 def render_incumbent_card(cur_row: pd.DataFrame):
@@ -358,7 +358,8 @@ def render_incumbent_card(cur_row: pd.DataFrame):
           </div>
         </div>
         """
-        html_component(html, height=140, scrolling=False)
+        from streamlit.components.v1 import html as html_component
+        html_component(html, height=CARD_HEIGHT, scrolling=False)
 
 # 진보당 현황
 def render_prg_party_box(
@@ -412,11 +413,30 @@ def render_prg_party_box(
         members  = _to_int(r.get(col_members)) if col_members else None
 
         # ---- 대시보드형 ----
-        left, right = st.columns(2)
-        with left:
-            st.metric("진보 득표력", _fmt_pct(strength))
-        with right:
-            st.metric("진보당 당원수", f"{members:,}명" if isinstance(members, (int, float)) and members is not None else "N/A")
+        from streamlit.components.v1 import html as html_component
+        
+        # 좌/우 2칸 그리드 + 적당한 여백
+        html = f"""
+        <div style="
+          display:grid; grid-template-columns: 1fr 1fr;
+          align-items:center; gap:12px; margin-top:6px;">
+          <div style="text-align:center; padding:8px 6px;">
+            <div style="color:#6B7280; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보 득표력</div>
+            <div style="font-weight:800; font-size:1.20rem; color:#111827;
+                        letter-spacing:-0.2px; font-variant-numeric:tabular-nums;">
+              {_fmt_pct(strength)}
+            </div>
+          </div>
+          <div style="text-align:center; padding:8px 6px;">
+            <div style="color:#6B7280; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보당 당원수</div>
+            <div style="font-weight:800; font-size:1.20rem; color:#111827;
+                        letter-spacing:-0.2px; font-variant-numeric:tabular-nums;">
+              { (f"{members:,}명" if isinstance(members,(int,float)) and members is not None else "N/A") }
+            </div>
+          </div>
+        </div>
+        """
+        html_component(html, height=CARD_HEIGHT, scrolling=False)
 
 # =============================
 # 레이아웃
@@ -460,6 +480,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
