@@ -275,42 +275,13 @@ elif menu == "지역별 분석":
     # 상단바: 왼쪽엔 지역명(동적 타이틀), 오른쪽엔 앱 제목
     render_topbar(sel_label)
 
-    col_left, col_right = st.columns([1.2, 1])
-    with col_left:
-        st.subheader("24년 총선결과")
-        res_row = get_by_code(df_24, sel_code)
-        render_results_2024_card(res_row, df_24=df_24, code=sel_code)
-    with col_right:
-        st.subheader("현직정보")
-        cur_row = get_by_code(df_curr, sel_code)
-        render_incumbent_card(cur_row)
-
-    st.divider()
-
-    col_a, col_b = st.columns([0.9, 1.1])
-    with col_a:
-        st.subheader("진보당 현황")
-        prg_row = get_by_code(df_party, sel_code)   # party_labels에서 필요 필드 사용
-        pop_row = get_by_code(df_pop, sel_code)
-        render_prg_party_box(prg_row, pop_row)
-    with col_b:
-        st.subheader("정당성향별 득표추이")
-        ts = compute_trend_series(df_trend, sel_code)
-        render_vote_trend_chart(ts)
-
-    # 요약지표
-    summary = compute_summary_metrics(df_trend, df_24, df_idx, sel_code) or {}
-    prg_val = summary.get("PL_prg_str")
-    gap_val = summary.get("PL_gap_B")
-    swing_val = summary.get("PL_swing_B")
-    prg_text  = f"{float(prg_val):.2f}%" if isinstance(prg_val, (int, float)) and pd.notna(prg_val) else "N/A"
-    gap_text  = f"{float(gap_val):.2f}p" if isinstance(gap_val, (int, float)) and pd.notna(gap_val) else "N/A"
-    swing_txt = str(swing_val) if swing_val is not None and str(swing_val) != "nan" else "N/A"
-    st.caption(f"요약지표 · 진보정당득표력: {prg_text} · 유동성B: {swing_txt} · 경합도B: {gap_text}")
-
-    st.divider()
-    st.subheader("인구 정보")
-    render_population_box(get_by_code(df_pop, sel_code))
+# 레이아웃
+render_region_detail_layout(
+    df_pop=pop_sel,
+    df_trend=trend_sel,
+    df_24=res_sel,
+    df_cur=cur_sel,
+    df_prg=prg_sel)
 
 # -----------------------------
 # Page: 데이터 설명
