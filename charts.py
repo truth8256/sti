@@ -265,6 +265,7 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
 def render_incumbent_card(cur_row: pd.DataFrame):
     from streamlit.components.v1 import html as html_component
 
+    # 데이터 체크
     if cur_row is None or cur_row.empty:
         with st.container(border=True):
             st.markdown("**현직정보**")
@@ -275,10 +276,10 @@ def render_incumbent_card(cur_row: pd.DataFrame):
     r = cur_row.iloc[0]
 
     # 컬럼 자동 탐색
-    name_col   = next((c for c in ["의원명", "이름", "성명"] if c in cur_row.columns), None)
-    party_col  = next((c for c in ["정당", "소속정당"] if c in cur_row.columns), None)
-    term_col   = next((c for c in ["선수", "당선횟수"] if c in cur_row.columns), None)
-    age_col    = next((c for c in ["연령", "나이"] if c in cur_row.columns), None)
+    name_col   = next((c for c in ["의원명","이름","성명"] if c in cur_row.columns), None)
+    party_col  = next((c for c in ["정당","소속정당"] if c in cur_row.columns), None)
+    term_col   = next((c for c in ["선수","당선횟수"] if c in cur_row.columns), None)
+    age_col    = next((c for c in ["연령","나이"] if c in cur_row.columns), None)
     gender_col = next((c for c in ["성별"] if c in cur_row.columns), None)
 
     name   = str(r.get(name_col, "정보없음")) if name_col else "정보없음"
@@ -287,68 +288,63 @@ def render_incumbent_card(cur_row: pd.DataFrame):
     gender = str(r.get(gender_col, "N/A")) if gender_col else "N/A"
     age    = str(r.get(age_col, "N/A")) if age_col else "N/A"
 
-    # 이니셜(아바타용)
+    # 이니셜(아바타용, 없으면 'NA')
     def _initials(s: str) -> str:
         s = (s or "").strip()
-        if not s:
-            return "NA"
-        # 한글이 포함되면 앞 2글자, 그 외에는 단어 첫글자 조합
+        if not s: return "NA"
+        # 한글 포함이면 앞 2글자, 아니면 단어 첫글자 2개
         if any('\uac00' <= ch <= '\ud7a3' for ch in s):
             return s[:2]
         parts = [p for p in s.split() if p]
-        if len(parts) == 1:
-            return parts[0][:2].upper()
-        return (parts[0][0] + parts[1][0]).upper()
+        return (parts[0][:2] if len(parts) == 1 else (parts[0][0] + parts[1][0])).upper()
 
     ini = _initials(name)
 
-    # 정당색 칩 (있으면 사용)
+    # 정당 색상
     try:
         fg, bg = _party_chip_color(party)
     except Exception:
         fg, bg = "#334155", "rgba(51,65,85,0.08)"
 
+    # 렌더
     with st.container(border=True):
         st.markdown("**현직정보**")
 
         html = f"""
-        <div style="display:grid; grid-template-columns: 72px 1fr; gap:14px; align-items:center; margin-top:6px;">
+        <div style="display:grid; grid-template-columns:72px 1fr; gap:14px; align-items:center; margin-top:6px;">
+          <!-- 아바타 -->
+          <div style="display:flex; align-items:center; justify-content:center;">
+            <div style="width:60px; height:60px; border-radius:50%;
+                        background:{bg}; color:{fg};
+                        display:flex; align-items:center; justify-content:center;
+                        font-weight:700; font-size:1.0rem;">
+              {ini}
+            </div>
+          </div>
 
-            <!-- 아바타 -->
-            <div style="display:flex; align-items:center; justify-content:center;">
-                <div style="
-                    width:60px; height:60px; border-radius:50%;
-                    background:{bg}; color:{fg};
-                    display:flex; align-items:center; justify-content:center;
-                    font-weight:700; font-size:1.0rem;">
-                    {ini}
-                </div>
+          <!-- 본문 -->
+          <div>
+            <!-- 이름 + 정당칩 -->
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+              <div style="font-size:1.05rem; font-weight:700; color:#111827;">{name}</div>
+              <div style="display:inline-flex; align-items:center; gap:6px;
+                          padding:4px 10px; border-radius:999px;
+                          font-weight:600; font-size:.92rem;
+                          color:{fg}; background:{bg};">
+                {party}
+              </div>
             </div>
 
-            <!-- 본문 -->
-            <div>
-                <!-- 상단: 이름 + 정당칩 -->
-                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
-                    <div style="font-size:1.05rem; font-weight:700; color:#111827;">{name}</div>
-                    <div style="display:inline-flex; align-items:center; gap:6px;
-                                padding:4px 10px; border-radius:999px;
-                                font-weight:600; font-size:.92rem;
-                                color:{fg}; background:{bg};">
-                        {party}
-                    </div>
-                </div>
-
-                <!-- 하단: 배지들 -->
-                <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
-                    <span style="padding:4px 10px; border-radius:999px; background:#F3F4F6; color:#374151; font-size:.88rem; font-weight:600;">선수: {term}</span>
-                    <span style="padding:4px 10px; border-radius:999px; background:#F3F4F6; color:#374151; font-size:.88rem; font-weight:600;">성별: {gender}</span>
-                    <span style="padding:4px 10px; border-radius:999px; background:#F3F4F6; color:#374151; font-size:.88rem; font-weight:600;">연령: {age}</span>
-                </div>
+            <!-- 배지들 -->
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+              <span style="padding:4px 10px; border-radius:999px; background:#F3F4F6; color:#374151; font-size:.88rem; font-weight:600;">선수: {term}</span>
+              <span style="padding:4px 10px; border-radius:999px; background:#F3F4F6; color:#374151; font-size:.88rem; font-weight:600;">성별: {gender}</span>
+              <span style="padding:4px 10px; border-radius:999px; background:#F3F4F6; color:#374151; font-size:.88rem; font-weight:600;">연령: {age}</span>
             </div>
-
+          </div>
         </div>
         """
-        # 높이는 상황에 맞게 150~180 사이로 조정 가능
+        # 높이는 150~180 정도
         html_component(html, height=150, scrolling=False)
 
 
@@ -394,6 +390,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
