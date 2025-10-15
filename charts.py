@@ -60,7 +60,7 @@ def _norm_cols(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =============================
-# 파이차트트
+# 파이차트
 # =============================
 def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[str],
                width: int = 260, height: int = 260):
@@ -197,7 +197,13 @@ def render_population_box(pop_df: pd.DataFrame):
 # =============================
 # 레이아웃
 # =============================
-def render_region_detail_layout():
+def render_region_detail_layout(
+    df_pop: pd.DataFrame | None = None,
+    df_trend: pd.DataFrame | None = None,
+    df_24: pd.DataFrame | None = None,
+    df_cur: pd.DataFrame | None = None,
+    df_prg: pd.DataFrame | None = None,
+):
     """
     지역별 페이지 전체 구조 틀
     - 상단: 인구 정보 (1:1 비율)
@@ -205,6 +211,7 @@ def render_region_detail_layout():
     - 중간: 정당성향별 득표추이 (단독)
     - 하단: 24년 총선결과 / 현직 정보 / 진보당 현황 (1:1:1)
     """
+    import streamlit as st  # 안전차원 (상단 import가 이미 있으면 제거해도 됨)
 
     # ============ 상단 인구정보 ============ #
     st.markdown("### 👥 인구 정보")
@@ -241,14 +248,13 @@ def render_region_detail_layout():
     with col1.container(border=True):
         st.markdown("#### 24년 총선결과")
         st.info("총선 결과 카드 자리")
-
     with col2.container(border=True):
         st.markdown("#### 현직 정보")
         st.info("현직 의원 정보 카드 자리")
-
     with col3.container(border=True):
         st.markdown("#### 진보당 현황")
         st.info("진보당 현황 카드 자리")
+
 
 
 
