@@ -220,55 +220,62 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
     gap = round(share1 - share2, 2) if isinstance(share1, (int,float)) and isinstance(share2, (int,float)) \
           else (compute_24_gap(df_24, code) if (df_24 is not None and code is not None) else None)
 
-    # 스타일
-    if "_css_res24" not in st.session_state:
-        st.markdown("""
-        <style>
-        .res24-card { border:1px solid #E5E7EB; border-radius:12px; padding:12px 14px; background:#fff; }
-        .res24-grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:0; align-items:center; }
-        .res24-cell { padding:10px 8px; text-align:center; }
-        .res24-cell + .res24-cell { border-left:1px solid #EEF2F7; }  /* 세로 구분선 */
-        .res24-title { font-weight:700; font-size:1.05rem; margin:0 0 6px 0; }
-        .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-weight:600; font-size:.98rem; }
-        .name { font-weight:600; font-size:.98rem; line-height:1.25; }
-        .value { font-weight:700; font-size:1.05rem; margin-top:6px;
-                 font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;}
-        .muted { color:#6B7280; font-weight:600; }
-        .value-muted { color:#334155; }
-        </style>
-        """, unsafe_allow_html=True)
-        st.session_state["_css_res24"] = True
+# -------------------- 렌더링 (제목/테두리/3열 고정) --------------------
+with st.container(border=True):
+    # 제목은 기본 마크다운 스타일 유지 (폰트 크기/두께 Streamlit 기본값)
+    st.markdown("**24년 총선결과**")
 
-    # 칩 색상
+    # 칩 색상 (텍스트/배경)
     c1_fg, c1_bg = _party_chip_color(name1)
     c2_fg, c2_bg = _party_chip_color(name2)
 
-    with st.container(border=False):
-        st.markdown("<div class='res24-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='res24-title'>24년 총선결과</div>", unsafe_allow_html=True)
-
-        html = f"""
-        <div class="res24-grid">
-            <div class="res24-cell">
-                <div class="chip" style="color:{c1_fg}; background:{c1_bg};">
-                    <span class="name">{name1}</span>
-                </div>
-                <div class="value">{_fmt_pct(share1)}</div>
+    # grid를 인라인 스타일로 강제 (3열 고정)
+    html = f"""
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; margin-top:6px;">
+        <!-- 1위 -->
+        <div style="padding:10px 8px; text-align:center;">
+            <div style="
+                display:inline-flex; align-items:center; gap:6px;
+                padding:4px 8px; border-radius:999px;
+                font-weight:600; font-size:.98rem;
+                color:{c1_fg}; background:{c1_bg};">
+                {name1}
             </div>
-            <div class="res24-cell">
-                <div class="chip" style="color:{c2_fg}; background:{c2_bg};">
-                    <span class="name">{name2}</span>
-                </div>
-                <div class="value">{_fmt_pct(share2)}</div>
-            </div>
-            <div class="res24-cell">
-                <div class="muted">1~2위 격차</div>
-                <div class="value value-muted">{_fmt_gap(gap)}</div>
+            <div style="
+                font-weight:700; font-size:1.05rem; margin-top:6px;
+                font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                {_fmt_pct(share1)}
             </div>
         </div>
-        """
-        st.markdown(html, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+
+        <!-- 세로 구분선 포함된 2위 -->
+        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+            <div style="
+                display:inline-flex; align-items:center; gap:6px;
+                padding:4px 8px; border-radius:999px;
+                font-weight:600; font-size:.98rem;
+                color:{c2_fg}; background:{c2_bg};">
+                {name2}
+            </div>
+            <div style="
+                font-weight:700; font-size:1.05rem; margin-top:6px;
+                font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#111827;">
+                {_fmt_pct(share2)}
+            </div>
+        </div>
+
+        <!-- 격차 -->
+        <div style="padding:10px 8px; text-align:center; border-left:1px solid #EEF2F7;">
+            <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
+            <div style="
+                font-weight:700; font-size:1.05rem; margin-top:6px;
+                font-variant-numeric: tabular-nums; letter-spacing:-0.2px; color:#334155;">
+                {_fmt_gap(gap)}
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # =============================
@@ -313,6 +320,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
