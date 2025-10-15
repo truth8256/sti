@@ -375,6 +375,7 @@ def render_prg_party_box(
 
     with st.container(border=True, height=140):
         st.markdown("**진보당 현황**")
+        st.markdown("<div style='padding-top:4px;'></div>", unsafe_allow_html=True)
 
         # ---- 데이터 확보 ----
         if prg_row is None or prg_row.empty:
@@ -410,9 +411,8 @@ def render_prg_party_box(
         strength = _to_pct_float(r.get(col_strength)) if col_strength else None  # 0~100 가정
         members  = _to_int(r.get(col_members)) if col_members else None
 
-        # ---- 대시보드형: 기본 컴포넌트만 사용 ----
+        # ---- 대시보드형 ----
         left, right = st.columns(2)
-
         with left:
             st.metric("진보 득표력", _fmt_pct(strength))
         with right:
@@ -460,6 +460,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
