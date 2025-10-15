@@ -379,79 +379,59 @@ def render_prg_party_box(
     with st.container(border=True):
         st.markdown("**진보당 현황**")
 
-        # prg_row가 비어오면 CSV에서 직접 찾아서 한 행 선택
         if prg_row is None or prg_row.empty:
-            df_all = _load_index_df()
-            if df_all is None or df_all.empty:
-                st.info("지표 소스(index_sample.csv)를 찾을 수 없습니다. (sti/data/index_sample.csv 경로 확인)")
-                return
+            st.info("진보당 관련 데이터가 없습니다.")
+            return
 
-            df_all.columns = [_norm(c) for c in df_all.columns]
-            # 후보 키: region / code (네가 준 헤더 기준)
-            code_col = "code" if "code" in df_all.columns else None
-            name_col = "region" if "region" in df_all.columns else None
-
-            prg_row = pd.DataFrame()
-            if code is not None and code_col:
-                key = _norm(code)
-                prg_row = df_all[df_all[code_col].astype(str).map(_norm) == key].head(1)
-            if (prg_row is None or prg_row.empty) and region and name_col:
-                key = _norm(region)
-                prg_row = df_all[df_all[name_col].astype(str).map(_norm) == key].head(1)
-                if prg_row.empty:
-                    prg_row = df_all[df_all[name_col].astype(str).str.contains(key, na=False)].head(1)
-            if prg_row is None or prg_row.empty:
-                prg_row = df_all.head(1)
-
-            if debug:
-                st.caption(f"[debug] 사용 소스 경로 탐색 OK. 컬럼: {list(df_all.columns)}")
-                st.caption(f"[debug] 선택행 비어있음? {prg_row.empty}")
-
-        # ---- 표시 로직 ----
-        df = prg_row.copy()
-        df.columns = [_norm(c) for c in df.columns]
+        df = _norm_cols(prg_row)
         r = df.iloc[0]
 
-        # 정확히 이 두 컬럼만 사용 (네가 준 헤더와 동일)
-        col_strength = "진보정당 득표력" if "진보정당 득표력" in df.columns else None
-        col_members  = "진보당 당원수"   if "진보당 당원수"   in df.columns else None
+        # 정확 컬럼 우선, 공백/변형 대응(부분일치) 보조
+        def pick(colname: str) -> str | None:
+            if colname in df.columns: return colname
+            key = colname.replace(" ", "")
+            return next((c for c in df.columns if key in str(c).replace(" ", "")), None)
 
-        # 혹시 뒤 공백/숨은 공백이 있으면 부분일치로 보조
-        if col_strength is None:
-            col_strength = next((c for c in df.columns if "진보정당 득표력" in c.replace(" ", "")), None)
-        if col_members is None:
-            col_members  = next((c for c in df.columns if "진보당당원수"   in c.replace(" ", "")), None)
+        c_strength = pick("진보정당 득표력")
+        c_members  = pick("진보당 당원수")
 
-        strength = _to_pct_float(r.get(col_strength)) if col_strength else None
-        members  = _to_int(r.get(col_members)) if col_members else None
+        strength = _to_pct_float(r.get(c_strength)) if c_strength else None   # 0~100 가정
+        members  = _to_int(r.get(c_members)) if c_members else None
 
-        if debug:
-            st.caption(f"[debug] 매칭: 득표력={col_strength!r}, 당원수={col_members!r}")
-            st.caption(f"[debug] row 샘플: {{'{col_strength}': {r.get(col_strength)}, '{col_members}': {r.get(col_members)}}}")
-
-        # 스타일 1회
-        if "_css_prg_card_simple" not in st.session_state:
+        # 스타일 1회 주입
+        if "_css_prg_card_v2" not in st.session_state:
             st.markdown("""
             <style>
-              .prg-wrap { display:flex; flex-direction:column; gap:10px; margin-top:6px; }
-              .metric-box { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 0; }
-              .metric-label { color:#6B7280; font-weight:600; font-size:0.95rem; }
-              .metric-value { font-weight:800; font-size:1.15rem; color:#111827; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; }
-              .divider { height:1px; background:#E5E7EB; margin:4px 0; width:70%; }
+              .prg-grid { display:grid; grid-template-columns:1fr 1fr; align-items:center; margin-top:6px; }
+              .prg-cell { padding:10px 8px; text-align:center; }
+              .prg-cell + .prg-cell { border-left:1px solid #EEF2F7; }
+              .prg-label { color:#6B7280; font-weight:600; }
+              .prg-value { font-weight:800; font-size:1.15rem; color:#111827;
+                           font-variant-numeric:tabular-nums; letter-spacing:-0.2px; margin-top:6px; }
+              .prg-bar { height:8px; border-radius:999px; background:#F1F5F9; margin:10px auto 0; width:82%; overflow:hidden; }
+              .prg-fill { height:100%; background:#7B1FA2; } /* 진보당 포인트색 */
+              .badge { display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px;
+                       font-weight:600; font-size:.90rem; background:rgba(123,31,162,0.10); color:#7B1FA2; margin-top:8px; }
             </style>
             """, unsafe_allow_html=True)
-            st.session_state["_css_prg_card_simple"] = True
+            st.session_state["_css_prg_card_v2"] = True
+
+        # 진행바 너비 계산
+        fill = 0.0
+        if isinstance(strength, (int, float)):
+            fill = max(0.0, min(100.0, strength))
 
         html = f"""
-        <div class="prg-wrap">
-          <div class="metric-box">
-            <div class="metric-label">진보 득표력</div>
-            <div class="metric-value">{_fmt_pct(strength)}</div>
+        <div class="prg-grid">
+          <div class="prg-cell">
+            <div class="prg-label">진보 득표력</div>
+            <div class="prg-value">{_fmt_pct(strength)}</div>
+            <div class="prg-bar"><div class="prg-fill" style="width:{fill}%;"></div></div>
           </div>
-          <div class="divider"></div>
-          <div class="metric-box">
-            <div class="metric-label">진보당 당원수</div>
-            <div class="metric-value">{(f"{members:,}명" if isinstance(members,(int,float)) and members is not None else "N/A")}</div>
+          <div class="prg-cell">
+            <div class="prg-label">진보당 당원수</div>
+            <div class="prg-value">{f"{members:,}명" if isinstance(members,(int,float)) and members is not None else "N/A"}</div>
+            <div class="badge">조직 지표</div>
           </div>
         </div>
         """
@@ -499,6 +479,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
