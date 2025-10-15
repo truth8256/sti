@@ -29,6 +29,7 @@ from charts import (
     render_results_2024_card,
     render_incumbent_card,
     render_prg_party_box,
+    render_region_detail_layout,  # ✅ 레이아웃 함수 임포트
 )
 
 # -----------------------------
@@ -175,7 +176,6 @@ def render_topbar(page_title: str | None):
         if page_title:
             st.title(page_title)
         else:
-            # 선택 전에는 빈 영역 유지
             st.write("")
     with c2:
         st.markdown(
@@ -210,7 +210,6 @@ df_idx   = ensure_code_col(df_idx)
 # Page: 종합
 # -----------------------------
 if menu == "종합":
-    # 기존 형태 유지 (상단 큰 타이틀)
     st.title("🗳️ 지역구 선정 1단계 조사 결과")
     st.caption("에스티아이")
 
@@ -256,32 +255,38 @@ elif menu == "지역별 분석":
         st.error("지역 목록을 만들 수 없습니다. (어느 데이터셋에도 '코드' 및 지역명 컬럼이 없음)")
         st.stop()
 
-    # 선택 전: placeholder를 가진 옵션으로 구성
     PLACEHOLDER = "— 지역을 선택하세요 —"
     options = [PLACEHOLDER] + regions["라벨"].tolist()
 
     st.sidebar.header("지역 선택")
     sel_label = st.sidebar.selectbox("선거구를 선택하세요", options, index=0)
 
-    # 아직 선택 안 됨 → 상단 우측 앱 제목만, 본문에는 안내 문구
     if sel_label == PLACEHOLDER:
         render_topbar(None)
         st.subheader("지역을 선택하세요")
         st.stop()
 
-    # 선택됨 → 코드 매핑
+    # 선택된 코드 찾기
     sel_code = regions.loc[regions["라벨"] == sel_label, "코드"].iloc[0]
 
-    # 상단바: 왼쪽엔 지역명(동적 타이틀), 오른쪽엔 앱 제목
+    # 상단 고정 헤더
     render_topbar(sel_label)
 
-# 레이아웃
-render_region_detail_layout(
-    df_pop=pop_sel,
-    df_trend=trend_sel,
-    df_24=res_sel,
-    df_cur=cur_sel,
-    df_prg=prg_sel)
+    # 선택된 지역 데이터만 필터링
+    pop_sel   = get_by_code(df_pop, sel_code)
+    trend_sel = get_by_code(df_trend, sel_code) if "코드" in df_trend.columns else df_trend
+    res_sel   = get_by_code(df_24, sel_code)
+    cur_sel   = get_by_code(df_curr, sel_code)
+    prg_sel   = get_by_code(df_party, sel_code)
+
+    # 상세 레이아웃 렌더링 (charts.py)
+    render_region_detail_layout(
+        df_pop=pop_sel,
+        df_trend=trend_sel,
+        df_24=res_sel,
+        df_cur=cur_sel,
+        df_prg=prg_sel
+    )
 
 # -----------------------------
 # Page: 데이터 설명
