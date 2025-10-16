@@ -284,52 +284,52 @@ elif menu == "지역별 분석":
 # -----------------------------
 # Page: 데이터 설명
 # -----------------------------
-    # -----------------------------
-    # 지표별 구성 및 해설 (외부 MD 파일 렌더)
-    # -----------------------------
-    st.divider()
-    st.subheader("📘 지표별 구성 및 해설")
+# -----------------------------
+# 지표별 구성 및 해설 (외부 MD 파일 렌더)
+# -----------------------------
+st.divider()
+st.subheader("📘 지표별 구성 및 해설")
 
-    # MD 파일 탐색 후보 경로
-    md_candidates = [
-        Path("sti") / "지표별 구성 및 해설.md",
-        Path("지표별 구성 및 해설.md"),
-        Path("/mnt/data/sti/지표별 구성 및 해설.md"),
-    ]
-    encodings = ["utf-8", "utf-8-sig", "cp949", "euc-kr"]
+# MD 파일 탐색 후보 경로
+md_candidates = [
+    Path("sti") / "지표별 구성 및 해설.md",
+    Path("지표별 구성 및 해설.md"),
+    Path("/mnt/data/sti/지표별 구성 및 해설.md"),
+]
+encodings = ["utf-8", "utf-8-sig", "cp949", "euc-kr"]
 
-    md_text = None
-    md_path_used = None
-    for p in md_candidates:
-        if p.exists():
-            for enc in encodings:
-                try:
-                    md_text = p.read_text(encoding=enc)
-                    md_path_used = p
-                    break
-                except Exception:
-                    continue
-            if md_text is not None:
+md_text = None
+md_path_used = None
+for p in md_candidates:
+    if p.exists():
+        for enc in encodings:
+            try:
+                md_text = p.read_text(encoding=enc)
+                md_path_used = p
                 break
+            except Exception:
+                continue
+        if md_text is not None:
+            break
 
-    if md_text:
-        # 본문 렌더
-        st.markdown(md_text)
+if md_text:
+    # 본문 렌더
+    st.markdown(md_text)
 
-        # 다운로드 버튼 (원문 저장용)
-        st.download_button(
-            label="Markdown 파일 다운로드",
-            data=md_text,
-            file_name=(md_path_used.name if md_path_used else "지표별_구성_및_해설.md"),
-            mime="text/markdown",
-            use_container_width=True,
-        )
+    # 다운로드 버튼 (원문 저장용)
+    st.download_button(
+        label="Markdown 파일 다운로드",
+        data=md_text,
+        file_name=(md_path_used.name if md_path_used else "지표별_구성_및_해설.md"),
+        mime="text/markdown",
+        use_container_width=True,
+    )
 
-        # 파일 경로 안내
-        with st.expander("파일 경로 정보"):
-            st.code(str(md_path_used))
-    else:
-        st.info("`sti/지표별 구성 및 해설.md` 파일을 찾지 못했습니다. 경로 또는 파일명을 확인해 주세요.")
+    # 파일 경로 안내
+    with st.expander("파일 경로 정보"):
+        st.code(str(md_path_used))
+else:
+    st.info("`sti/지표별 구성 및 해설.md` 파일을 찾지 못했습니다. 경로 또는 파일명을 확인해 주세요.")
 
 
 st.write("")
