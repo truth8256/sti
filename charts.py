@@ -209,35 +209,43 @@ def render_population_box(pop_df: pd.DataFrame):
 
 # 연령 구성
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320):
+    """
+    입력(모두 '명'):
+      - 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상)
+      - 전체 유권자 수
+    60~64세 = 전체 - (청년+중년+고령)  → 회색 조각(범례/강조 제외)
+    분모 = 전체 유권자 수
+    같은 지역구코드끼리 합산
+    강조는 Streamlit 라디오로 제어(Altair selection 미사용)
+    """
     import numpy as np
     import altair as alt
 
     if pop_df is None or pop_df.empty:
         st.info("연령 구성 데이터가 없습니다.")
         return
-
     df = _norm_cols(pop_df.copy())
 
-    # 컬럼 이름
+    # --- 컬럼명 ---
     Y_COL = "청년층(18~39세)"
     M_COL = "중년층(40~59세)"
     O_COL = "고령층(65세 이상)"
     TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
-    CODE_CANDIDATES = ["지역구코드","선거구코드","코드","code","CODE"]
+    CODE_CANDIDATES  = ["지역구코드","선거구코드","코드","code","CODE"]
 
-    # 체크
-    for c in [Y_COL, M_COL, O_COL]:
+    for c in (Y_COL, M_COL, O_COL):
         if c not in df.columns:
             st.error(f"필수 컬럼이 없습니다: {c}")
             return
 
     total_col = next((c for c in TOTAL_CANDIDATES if c in df.columns), None)
-    code_col = next((c for c in CODE_CANDIDATES if c in df.columns), None)
     if total_col is None:
         st.error("분모가 될 '전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # 합산
+    code_col = next((c for c in CODE_CANDIDATES if c in df.columns), None)
+
+    # --- 같은 지역구끼리 합산 ---
     use_cols = [Y_COL, M_COL, O_COL, total_col]
     if code_col:
         row = df.groupby(code_col, dropna=False)[use_cols].sum(min_count=1).iloc[0]
@@ -246,61 +254,87 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
 
     def to_num(x):
         if pd.isna(x): return np.nan
-        if isinstance(x, (int, float)): return float(x)
-        try:
-            return float(str(x).replace(",", "").strip())
-        except:
-            return np.nan
+        if isinstance(x, (int,float)): return float(x)
+        try: return float(str(x).replace(",","").strip())
+        except: return np.nan
 
-    y = to_num(row[Y_COL])
-    m = to_num(row[M_COL])
-    o = to_num(row[O_COL])
+    y = to_num(row[Y_COL]); m = to_num(row[M_COL]); o = to_num(row[O_COL])
     total_v = to_num(row[total_col])
-    if not all(isinstance(v, (int, float)) for v in [y, m, o, total_v]) or total_v <= 0:
+
+    if not all(isinstance(v,(int,float)) for v in [y,m,o,total_v]) or total_v is np.nan or total_v <= 0:
         st.info("전체 유권자 수(분모)가 0이거나 없습니다.")
         return
 
-    # 60~64 계산
-    a6064 = max(total_v - (y + m + o), 0.0)
+    # 60~64 계산 (음수 방지)
+    a6064 = max(total_v - sum(v for v in [y,m,o] if v==v), 0.0)
     denom = total_v
 
-    # 데이터 구성
-    labels_main = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
-    vals_main = [y, m, o]
+    labels_main = ["청년층(18~39세)","중년층(40~59세)","고령층(65세 이상)"]
+    vals_main   = [y, m, o]
+
+    labels_all  = labels_main + ["60~64세"]
+    vals_all    = vals_main + [a6064]
+    ratios_all  = [(v/denom*100.0 if isinstance(v,(int,float)) and denom>0 else 0.0) for v in vals_all]
+
+    # --- 라디오(강조) — Altair selection 대신 Streamlit 사용 ---
+    _col1, _col2 = st.columns([1, 1])
+    with _col2:
+        focus = st.radio(
+            "강조",
+            options=["전체"] + labels_main,
+            index=0,
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+    with _col1:
+        st.markdown("""
+        <div style="display:flex; justify-content:flex-start; align-items:center; margin:0 4px 6px 4px;">
+          <span style="font-weight:700; color:#0f172a;">분모 기준</span>
+          <span style="
+            display:inline-flex; align-items:center; gap:6px; margin-left:8px;
+            padding:4px 10px; border-radius:999px;
+            background:#F1F5F9; color:#334155; font-size:.82rem; font-weight:600;">
+            전체 유권자(60~64 포함)
+          </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 강조 플래그
+    def emph_flag(name: str) -> bool:
+        return (focus == "전체") or (name == focus)
+
     df_plot = pd.DataFrame({
-        "계층": labels_main + ["60~64세"],
-        "명": vals_main + [a6064],
-        "비율": [v / denom * 100 for v in vals_main + [a6064]],
+        "계층": labels_all,
+        "명": vals_all,
+        "비율": [round(x, 6) for x in ratios_all],  # 아주 작은 수의 반올림 이슈 방지
         "is_extra": [False, False, False, True],
+        "강조": [emph_flag(nm) and nm != "60~64세" for nm in labels_all],  # 60~64는 강조 제외
     })
 
-    st.markdown("""
-    <div style="display:flex; justify-content:space-between; align-items:center; margin:0 4px 6px 4px;">
-      <span style="font-weight:700; color:#0f172a;">분모 기준</span>
-      <span style="
-        display:inline-flex; align-items:center; gap:6px;
-        padding:4px 10px; border-radius:999px;
-        background:#F1F5F9; color:#334155; font-size:.82rem; font-weight:600;">
-        전체 유권자(60~64 포함)
-      </span>
-    </div>
-    """, unsafe_allow_html=True)
+    # 모든 비율이 0이면(데이터 문제) 안내
+    if float(np.nansum(df_plot["비율"].fillna(0.0))) <= 0.0:
+        st.info("표시할 비율이 없습니다. (값이 전부 0)")
+        return
 
-    color_domain = labels_main + ["60~64세"]
-    color_range = ["#86B6F6", "#5AA9E6", "#2E86DE", "#9AA1AC"]
+    # 색상
+    color_map = {
+        "청년층(18~39세)": "#86B6F6",
+        "중년층(40~59세)": "#5AA9E6",
+        "고령층(65세 이상)": "#2E86DE",
+        "60~64세": "#9AA1AC",
+    }
+    color_domain = labels_all
+    color_range  = [color_map[k] for k in color_domain]
 
-    # selection_single (Altair 4,5 호환)
-    focus = alt.selection_single(fields=["계층"], bind="legend")
+    base = alt.Chart(df_plot).properties(width=280, height=max(180, box_height_px - 56))
 
-    base = alt.Chart(df_plot).properties(width=280, height=box_height_px - 56)
-
-    # 60~64 (회색, 고정)
+    # 60~64(회색) — 항상 표시
     arcs_extra = (
         base.transform_filter("datum.is_extra == true")
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
         .encode(
-            theta="비율:Q",
-            color=alt.value("#9AA1AC"),
+            theta=alt.Theta("비율:Q"),
+            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
             tooltip=[
                 alt.Tooltip("계층:N"),
                 alt.Tooltip("명:Q", format=",.0f"),
@@ -309,36 +343,33 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         )
     )
 
-    # 나머지 3개 그룹
+    # 메인 3조각 — 강조(투명도), 외곽선
     arcs_main = (
         base.transform_filter("datum.is_extra == false")
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
         .encode(
-            theta="비율:Q",
+            theta=alt.Theta("비율:Q"),
             color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range),
                             legend=alt.Legend(title=None, orient="top", values=labels_main)),
-            opacity=alt.condition(focus, alt.value(1.0), alt.value(0.25)),
+            opacity=alt.condition("datum.강조 == true", alt.value(1.0), alt.value(0.25)),
             tooltip=[
                 alt.Tooltip("계층:N"),
                 alt.Tooltip("명:Q", format=",.0f"),
                 alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
             ],
         )
-        .add_selection(focus)
     )
 
-    # 선택 강조 외곽선
     highlight = (
-        base.transform_filter("datum.is_extra == false")
-        .mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2)
+        base.transform_filter("datum.is_extra == false && datum.강조 == true")
+        .mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2, fillOpacity=0)
         .encode(
             theta="비율:Q",
-            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range)),
-            opacity=alt.condition(focus, alt.value(1.0), alt.value(0.0)),
+            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
         )
-        .add_selection(focus)
     )
 
+    # 컨테이너 폭 버그 회피를 위해 use_container_width=False(고정폭)
     st.altair_chart(arcs_extra + arcs_main + highlight, use_container_width=False)
 
 
@@ -825,6 +856,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
