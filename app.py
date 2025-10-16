@@ -317,27 +317,13 @@ elif menu == "데이터 설명":
 
     if md_text:
         st.markdown(md_text)
-        st.download_button(
-            label="Markdown 파일 다운로드",
-            data=md_text,
-            file_name=(md_path_used.name if md_path_used else "지표별_구성_및_해설.md"),
-            mime="text/markdown",
-            use_container_width=True,
-        )
-        with st.expander("파일 경로 정보"):
-            st.code(str(md_path_used))
     else:
         st.info("`sti/지표별 구성 및 해설.md` 파일을 찾지 못했습니다. 경로 또는 파일명을 확인해 주세요.")
 
-# -----------------------------
-# Footer (모든 페이지 공통)
-# -----------------------------
-st.write("")
-st.caption("© 2025 전략지역구 조사 · Streamlit 대시보드")
 
 # -----------------------------
 # Footer (모든 페이지 공통)
 # -----------------------------
 st.write("")
-st.caption("© 2025 전략지역구 조사 · Streamlit 대시보드")
+st.caption("© 2025 전략지역구 조사 · 대시보드")
 
