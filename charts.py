@@ -729,14 +729,14 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
     st.markdown("### 👥 인구 정보")
 
     # 바깥 비율: 첫 박스(유동·전체) 좁게, 오른쪽(연령·성비) 넓게
-    left_col, right_col = st.columns([1, 3])
+    left_col, right_col = st.columns([1, 5])
 
     with left_col:
         render_population_box(df_pop)
 
     with right_col:
         # 오른쪽 내부: 성비를 더 넓게
-        subcol_age, subcol_sex = st.columns([1, 2])
+        subcol_age, subcol_sex = st.columns([2, 3])
         with subcol_age.container(border=True):
             st.markdown("**연령 구성**")
             render_age_highlight_chart(df_pop, box_height_px=320)
@@ -755,6 +755,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
