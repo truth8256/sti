@@ -1,5 +1,5 @@
 # =============================
-# File: charts.py (patched, error-free)
+# File: charts.py (all-updated)
 # =============================
 from __future__ import annotations
 import re
@@ -79,29 +79,30 @@ def _load_index_df() -> pd.DataFrame | None:
     return None
 
 
-CARD_HEIGHT = 180
-
-
 # =============================
-# 색상/스타일 공통
+# 전역 스타일/상수
 # =============================
+# 한 줄(👥 인구 정보) 3개 컨테이너 높이를 확실히 맞추기 위한 min-height
+ROW_MINH = 340  # ← 세 카드 공통 높이
+CARD_HEIGHT = 220  # 결과 카드/현직 카드 등 최소 높이
+
 COLOR_TEXT_DARK = "#111827"
 COLOR_TEXT_MID  = "#6B7280"
 COLOR_MUTED     = "#334155"
 COLOR_BLUE      = "#1E6BFF"
 COLOR_GRAY_BAR  = "#E5E7EB"
 
-# ---- Global micro CSS (card padding / section gap)
 def _inject_global_css():
-    st.markdown("""
+    st.markdown(f"""
     <style>
-      .k-card { padding: 10px 10px 8px 10px; }
-      .k-gap-sm { height: 6px; }
-      .k-gap-md { height: 10px; }
-      .k-kpi-title { color:#6B7280; font-weight:600; font-size:0.95rem; }
-      .k-kpi-value { font-weight:800; font-size:1.20rem; color:#111827; letter-spacing:-0.2px; }
-      .k-minh-320 { min-height: 320px; }
-      .k-minh-180 { min-height: 180px; }
+      .k-card {{ padding: 10px 10px 8px 10px; }}
+      .k-gap-sm {{ height: 6px; }}
+      .k-gap-md {{ height: 10px; }}
+      .k-kpi-title {{ color:#6B7280; font-weight:600; font-size:0.95rem; }}
+      .k-kpi-value {{ font-weight:800; font-size:1.20rem; color:#111827; letter-spacing:-0.2px; }}
+      /* 동일 높이 컨테이너 래퍼 */
+      .k-eq {{ min-height: {ROW_MINH}px; display:flex; flex-direction:column; justify-content:space-between; }}
+      .k-minh-card {{ min-height: {CARD_HEIGHT}px; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -127,14 +128,16 @@ def _party_chip_color(name: str) -> tuple[str, str]:
 # =============================
 def render_population_box(pop_df: pd.DataFrame):
     """
-    - 첫 KPI 중앙 정렬 + '진보당 현황'과 동일 톤
-    - 유동비율 바: x축 최대 10% 고정 + 5% 기준선(rule)
+    - 좌측 KPI + 유동비율 게이지
+    - 동일 줄 높이 맞춤: k-eq 래퍼로 min-height 고정
     """
     import numpy as np
-
     with st.container(border=True):
+        st.markdown(f"<div class='k-eq'>", unsafe_allow_html=True)
+
         if pop_df is None or pop_df.empty:
             st.info("유동인구/연령/성비 차트를 위한 데이터가 없습니다.")
+            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         df = _norm_cols(pop_df.copy())
@@ -144,14 +147,15 @@ def render_population_box(pop_df: pd.DataFrame):
 
         if not total_col or not float_col:
             st.error("population.csv에서 '전체 유권자' 또는 '유동인구' 컬럼을 찾지 못했습니다.")
+            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         def _to_num(x):
-            if pd.isna(x): return np.nan
+            if pd.isna(x): return 0.0
             if isinstance(x, (int, float)): return float(x)
             s = str(x).strip().replace(",", "")
             try: return float(s)
-            except: return np.nan
+            except: return 0.0
 
         df[total_col] = df[total_col].apply(_to_num)
         df[float_col] = df[float_col].apply(_to_num)
@@ -164,15 +168,9 @@ def render_population_box(pop_df: pd.DataFrame):
             total_voters = float(df[total_col].sum())
             floating_pop = float(df[float_col].sum())
 
-        if np.isnan(total_voters) and np.isnan(floating_pop):
-            st.info("표시할 합계 수치가 없습니다.")
-            return
-
-        total_voters = 0.0 if np.isnan(total_voters) else total_voters
-        floating_pop = 0.0 if np.isnan(floating_pop) else floating_pop
         mobility_rate = floating_pop / total_voters if total_voters > 0 else float("nan")
 
-        # 중앙 KPI
+        # 중앙 KPI (인구 정보 첫 번째 컨테이너와 동일한 타이포 유지)
         st.markdown(
             f"""
             <div class="k-card" style="display:flex; flex-direction:column; align-items:center; text-align:center;">
@@ -186,9 +184,7 @@ def render_population_box(pop_df: pd.DataFrame):
             unsafe_allow_html=True,
         )
 
-        st.markdown("<div class='k-gap-md'></div>", unsafe_allow_html=True)
-
-        # 유동비율 바(최대 10%) + 5% 기준선
+        # 유동비율 바(최대 10%) + 5% 두꺼운 기준선
         if mobility_rate == mobility_rate:
             bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
             x_max = 0.10
@@ -199,8 +195,9 @@ def render_population_box(pop_df: pd.DataFrame):
                     x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0, x_max])),
                     y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
                     tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")],
+                    color=alt.value(COLOR_BLUE)
                 )
-                .properties(height=80)
+                .properties(height=76)
             )
             text = (
                 alt.Chart(bar_df)
@@ -211,21 +208,21 @@ def render_population_box(pop_df: pd.DataFrame):
                     text=alt.Text("값:Q", format=".1%"),
                 )
             )
-            rule = alt.Chart(pd.DataFrame({"x":[0.05]})).mark_rule(strokeDash=[4,4], opacity=0.5).encode(x="x:Q")
+            rule = alt.Chart(pd.DataFrame({"x":[0.05]})).mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6).encode(x="x:Q")
             st.altair_chart(chart + text + rule, use_container_width=True)
-            st.caption("유동비율 = (전입 + 전출) ÷ 전체 유권자 (동일 기간 기준, 그래프 최대치 10%, 점선=5%)")
         else:
             st.info("유동비율을 계산할 수 없습니다.")
+
+        st.markdown("</div>", unsafe_allow_html=True)  # /k-eq
 
 
 # =============================
 # 연령 구성 (반원 도넛)
 # =============================
-def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280, width_px: int = 320):
+def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280, width_px: int = 300):
     """
-    - 순서 고정: 청년층 → 중년층 → 고령층
-    - 기본 옅은 회색, 선택(버튼)만 파란색
-    - 툴팁: 인원 + 비율(%)
+    - 순서: 청년층 → 중년층 → 고령층
+    - 도넛 중앙 숫자 위치를 그래프 '중간'으로 끌어올림 (요청 반영), 전체 높이 축소
     """
     import numpy as np
 
@@ -236,8 +233,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 
     Y_COL, M_COL, O_COL = "청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"
     TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
-    required = [Y_COL, M_COL, O_COL]
-    for c in required:
+    for c in [Y_COL, M_COL, O_COL]:
         if c not in df.columns:
             st.error(f"필수 컬럼이 없습니다: {c}")
             return
@@ -269,11 +265,11 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         "표시비율": ratios100,
     })
 
-    width  = max(300, int(width_px))
-    height = max(220, int(box_height_px))
+    width  = max(280, int(width_px))
+    height = max(240, int(box_height_px))
     inner_r, outer_r = 70, 110
     cx = width / 2
-    cy = height * 0.65
+    cy = height * 0.50  # ← 더 위로(그래프 중간쯤) 이동
 
     base = alt.Chart(df_vis).properties(width=width, height=height)
     theta_enc = alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi/2, math.pi/2]))
@@ -296,13 +292,13 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
     big_txt_val = f"{df_vis.loc[idx, '표시비율']:.1f}%"
     center_big = (
         alt.Chart(pd.DataFrame({"_":[0]}))
-        .mark_text(fontSize=38, fontWeight="bold", color="#0f172a")
-        .encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big_txt_val))
+        .mark_text(fontSize=36, fontWeight="bold", color="#0f172a")
+        .encode(x=alt.value(cx), y=alt.value(cy - 4), text=alt.value(big_txt_val))
     )
     center_small = (
         alt.Chart(pd.DataFrame({"_":[0]}))
         .mark_text(fontSize=12, color="#475569")
-        .encode(x=alt.value(cx), y=alt.value(cy + 16), text=alt.value(focus))
+        .encode(x=alt.value(cx), y=alt.value(cy + 18), text=alt.value(focus))
     )
 
     st.altair_chart(arcs + center_big + center_small, use_container_width=False)
@@ -311,7 +307,11 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 # =============================
 # 성비 (연령대×성별 가로 막대)
 # =============================
-def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
+def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 280):
+    """
+    - 50% 기준선을 더 두껍고 진하게 별도 레이어(rule)로 강조
+    - 세 카드 높이 통일을 위해 기본 높이 축소(=연령 박스와 동일)
+    """
     import numpy as np
 
     if pop_df is None or pop_df.empty:
@@ -370,12 +370,11 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
     color_range = ["#3B82F6", "#EF4444"]
 
     n_items = tidy["연령대표시"].nunique()
-    per_item_px = 50
-    height_px = max(box_height_px, n_items * per_item_px + 40)
+    per_item_px = 46
+    height_px = max(box_height_px, n_items * per_item_px + 32)
 
-    chart = (
+    base = (
         alt.Chart(tidy)
-        .mark_bar(size=20)  # configure_bar 대신 size로 제어
         .encode(
             y=alt.Y(
                 "연령대표시:N",
@@ -387,8 +386,8 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
                 "비율:Q",
                 stack="normalize",
                 title="구성비(%)",
-                # 50%(0.5) 눈금/그리드가 반드시 뜨도록 values 지정
                 axis=alt.Axis(format=".0%", values=[0, 0.5, 1.0], grid=True),
+                scale=alt.Scale(domain=[0, 1.0])
             ),
             color=alt.Color(
                 "성별:N",
@@ -403,11 +402,11 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
                 alt.Tooltip("비율:Q", title="해당 연령대 내 비중", format=".1%"),
             ],
         )
-        .properties(height=height_px)
     )
+    bars = base.mark_bar(size=18)
+    rule50 = alt.Chart(pd.DataFrame({"x":[0.5]})).mark_rule(strokeWidth=2, opacity=0.6).encode(x="x:Q")
 
-    # ⚠️ Altair v5의 레이어 이슈 회피: 별도 rule 레이어 없이 축 그리드로 50% 표시
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(bars + rule50, use_container_width=True, theme=None)
 
 
 # =============================
@@ -416,7 +415,8 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
 def render_vote_trend_chart(ts: pd.DataFrame):
     """
     - 2022년도 정렬: 2022 대선 → 2022 광역 비례 → 2022 광역단체장 (보장)
-    - 연도 구간 배경 밴드로 가독 보강
+    - 연도 구간 배경 밴드
+    - x축 정렬은 scale.domain에 명시적으로 고정 (이전 미적용 문제 해결)
     """
     if ts is None or ts.empty:
         st.info("득표 추이 데이터가 없습니다.")
@@ -481,7 +481,6 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     long_df["선거명_표시"] = base_elec.apply(to_kr_label)
     long_df = long_df.dropna(subset=["선거명_표시","계열","득표율"])
 
-    # 정렬용 컬럼
     long_df["연도"] = long_df["선거명_표시"].str.extract(r"^(20\d{2})").astype(int)
 
     def _etype(s: str) -> str:
@@ -494,15 +493,10 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     long_df = long_df.sort_values(["연도","선거타입","선거명_표시","계열"]).drop_duplicates(subset=["선거명_표시","계열","득표율"])
 
-    # 2022 커스텀 정렬 (대선 → 광역 비례 → 광역단체장 보장)
     type_rank_default = {"대선": 1, "광역 비례": 2, "광역단체장": 3, "총선 비례": 4, "기타": 9}
     type_rank_2022    = {"대선": 0, "광역 비례": 1, "광역단체장": 2, "총선 비례": 3, "기타": 9}
 
-    uniq_labels = (
-        long_df[["선거명_표시", "연도", "선거타입"]]
-        .drop_duplicates()
-        .copy()
-    )
+    uniq_labels = long_df[["선거명_표시", "연도", "선거타입"]].drop_duplicates().copy()
 
     def _rank_row(row):
         if int(row["연도"]) == 2022:
@@ -520,12 +514,15 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     selector = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
 
+    # x축 정렬은 scale.domain으로 고정 (labelAngle만)
     line = (
         alt.Chart(long_df)
         .mark_line(point=False, strokeWidth=3)
         .encode(
-            x=alt.X("선거명_표시:N", sort=order_by_year, title="선거명",
-                    axis=alt.Axis(labelAngle=-35, labelOverlap=False, labelPadding=6, labelLimit=280)),
+            x=alt.X("선거명_표시:N",
+                    scale=alt.Scale(domain=order_by_year),
+                    axis=alt.Axis(labelAngle=-35, labelOverlap=False, labelPadding=6, labelLimit=280),
+                    title="선거명"),
             y=alt.Y("득표율:Q", title="득표율(%)"),
             color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors),
                             legend=alt.Legend(title=None, orient="top")),
@@ -543,7 +540,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         alt.Chart(long_df)
         .mark_circle(size=140)
         .encode(
-            x="선거명_표시:N",
+            x=alt.X("선거명_표시:N", scale=alt.Scale(domain=order_by_year)),
             y=alt.Y("득표율:Q"),
             color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors), legend=None),
             opacity=alt.condition(selector, alt.value(1), alt.value(0)),
@@ -556,7 +553,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         .transform_filter(selector)
     )
 
-    # 연도별 밴드 배경
+    # 연도별 밴드
     years = sorted(long_df["연도"].unique().tolist())
     band_df = []
     for y in years:
@@ -565,7 +562,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             band_df.append({"from": labels[0], "to": labels[-1], "연도": y})
     if band_df:
         bg = alt.Chart(pd.DataFrame(band_df)).mark_rect(opacity=0.06).encode(
-            x=alt.X("from:N", sort=order_by_year, title=None),
+            x=alt.X("from:N", scale=alt.Scale(domain=order_by_year), title=None),
             x2="to:N",
             color=alt.Color("연도:N", legend=None)
         )
@@ -582,8 +579,8 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 # =============================
 def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, code: str = None):
     """
-    - 반응형 CSS(3열 ↔ 1열)
-    - 카드 최소 높이 보강으로 줄바꿈 때도 안정
+    - 반응형 3열 고정(깨짐 방지), 높이 여유(CARD_HEIGHT ↑)
+    - 1열로 떨어지던 문제: media query 조건 완화
     """
     if res_row is None or res_row.empty:
         st.info("해당 선거구의 24년 결과 데이터가 없습니다.")
@@ -656,11 +653,12 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         html = f"""
         <style>
         .grid-24 {{
-          display:grid; grid-template-columns: repeat(3, 1fr); align-items:center; gap:0; margin-top:6px;
+          display:grid; grid-template-columns: repeat(3, 1fr);
+          align-items:center; gap:0; margin-top:6px;
         }}
-        @media (max-width: 900px) {{
-          .grid-24 {{ grid-template-columns: 1fr; gap:8px; }}
-          .cell {{ border-left:none !important; }}
+        /* 모바일에서도 2열 유지하도록 조건 완화 */
+        @media (max-width: 720px) {{
+          .grid-24 {{ grid-template-columns: repeat(2, 1fr); gap:8px; }}
         }}
         .chip {{
           display:inline-flex; flex-direction:column; align-items:center; padding:6px 10px; border-radius:14px;
@@ -669,11 +667,11 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
         .kpi {{
           font-weight:700; font-size:1.05rem; margin-top:8px; font-variant-numeric:tabular-nums; letter-spacing:-0.2px; color:{COLOR_TEXT_DARK};
         }}
-        .cell {{ padding:10px 8px; text-align:center; }}
+        .cell {{ padding:10px 8px; text-align:center; min-height: 88px; }}
         .divider {{ border-left:1px solid #EEF2F7; }}
         </style>
 
-        <div class="k-minh-180">
+        <div class="k-minh-card">
           <div class="grid-24">
               <div class="cell">
                   <div class="chip" style="color:{c1_fg}; background:{c1_bg};">
@@ -703,9 +701,8 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame = None, 
 # =============================
 def render_incumbent_card(cur_row: pd.DataFrame):
     """
-    - 이름 앞 원형 제거, 배지 유지
-    - 불릿 라인 간격 소폭 확대(1.65)
-    - 최근 경력 있으면 불릿 추가
+    - 최근 경력 줄바꿈/불릿 처리 (세미콜론·중점·개행 기준 split)
+    - 라인 간격 1.65 유지
     """
     if cur_row is None or cur_row.empty:
         with st.container(border=True):
@@ -723,12 +720,20 @@ def render_incumbent_card(cur_row: pd.DataFrame):
     gender_col = next((c for c in ["성별"] if c in cur_row.columns), None)
 
     career_cols = [c for c in ["최근경력","주요경력","경력","이력","최근 활동"] if c in cur_row.columns]
-    recent_career = None
+    raw_career = None
     for c in career_cols:
         v = str(r.get(c))
         if v and v.lower() not in ("nan","none"):
-            recent_career = v
+            raw_career = v
             break
+
+    def _split_career(s: str) -> list[str]:
+        if not s: return []
+        # 세미콜론 ;, 중점 • ·, 개행, 슬래시 /
+        parts = re.split(r"[;\n•·/]+", s)
+        return [p.strip() for p in parts if p.strip()]
+
+    career_items = _split_career(raw_career) if raw_career else []
 
     name   = str(r.get(name_col, "정보없음")) if name_col else "정보없음"
     party  = str(r.get(party_col, "정당미상")) if party_col else "정당미상"
@@ -743,6 +748,7 @@ def render_incumbent_card(cur_row: pd.DataFrame):
 
     with st.container(border=True):
         st.markdown("**현직정보**")
+        items_html = "".join([f"<li>{p}</li>" for p in career_items])
         html = f"""
         <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
           <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
@@ -756,7 +762,7 @@ def render_incumbent_card(cur_row: pd.DataFrame):
             <li>선수: {term}</li>
             <li>성별: {gender}</li>
             <li>연령: {age}</li>
-            {"<li>최근 경력: " + recent_career + "</li>" if recent_career else ""}
+            {"<li>최근 경력</li><ul style='margin:0.2rem 0 0 1.1rem;'>" + items_html + "</ul>" if items_html else ""}
           </ul>
         </div>
         """
@@ -765,13 +771,12 @@ def render_incumbent_card(cur_row: pd.DataFrame):
 
 
 # =============================
-# 진보당 현황 (개선 시각화)
+# 진보당 현황
 # =============================
 def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | None = None, *, code: str | int | None = None, region: str | None = None, debug: bool = False):
     """
-    - KPI: 득표력/당원수
-    - 게이지(0~40%) + 10/20/30/40% 눈금
-    - 보조: 천명당 당원(가능 시)
+    - KPI 타이포를 인구 정보 첫 카드와 동일하게 유지 (요청 반영)
+    - 보조지표(유권자 1000명당 …) 제거 (요청 반영)
     """
     def _norm(s: str) -> str:
         s = str(s).replace("\n", " ").replace("\r", " ").strip()
@@ -811,30 +816,13 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
         strength = _to_pct_float(r.get(col_strength)) if col_strength else None
         members  = _to_int(r.get(col_members)) if col_members else None
 
-        voters_total = None
-        if pop_row is not None and not pop_row.empty:
-            p = _norm_cols(pop_row.copy())
-            tcol = next((c for c in ["전체 유권자","전체유권자","total_voters"] if c in p.columns), None)
-            if tcol:
-                try:
-                    voters_total = int(pd.to_numeric(p[tcol].astype(str).str.replace(",","",regex=False), errors="coerce").sum())
-                except Exception:
-                    voters_total = None
-        per_1000 = None
-        if members is not None and voters_total and voters_total > 0:
-            per_1000 = round(members / (voters_total/1000), 2)
-
-        s_val = (strength if isinstance(strength,(int,float)) else None)
-        s01 = (s_val/100.0) if s_val is not None else None
-        gauge_df = pd.DataFrame({"항목":["진보 득표력"], "값":[s01 if s01 is not None else 0.0]})
-
-        # KPI 2개
+        # KPI 2개 (인구 정보 첫 카드와 동일한 스타일)
         from streamlit.components.v1 import html as html_component
         html_component(f"""
         <div class="k-card" style="display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:12px; margin-top:2px;">
           <div style="text-align:center;">
             <div class="k-kpi-title">진보 득표력</div>
-            <div class="k-kpi-value">{_fmt_pct(s_val) if s_val is not None else "N/A"}</div>
+            <div class="k-kpi-value">{_fmt_pct(strength) if strength is not None else "N/A"}</div>
           </div>
           <div style="text-align:center;">
             <div class="k-kpi-title">진보당 당원수</div>
@@ -843,10 +831,12 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
         </div>
         """, height=90, scrolling=False)
 
-        # 게이지 (0~40%) + 눈금
-        if s01 is not None:
+        # 득표력 게이지 (0~40%)
+        if strength is not None:
+            s01 = strength/100.0
+            gdf = pd.DataFrame({"항목":["진보 득표력"], "값":[s01]})
             g = (
-                alt.Chart(gauge_df)
+                alt.Chart(gdf)
                 .mark_bar()
                 .encode(
                     x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0, 0.40])),
@@ -857,7 +847,7 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
                 .properties(height=70)
             )
             g_text = (
-                alt.Chart(gauge_df)
+                alt.Chart(gdf)
                 .mark_text(align="left", dx=4)
                 .encode(
                     x=alt.X("값:Q", scale=alt.Scale(domain=[0, 0.40])),
@@ -867,15 +857,8 @@ def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | N
             )
             ticks = alt.Chart(pd.DataFrame({"x":[0.10,0.20,0.30,0.40]})).mark_rule(opacity=0.35, strokeDash=[2,2]).encode(x="x:Q")
             st.altair_chart(g + g_text + ticks, use_container_width=True)
-            st.caption("진보 득표력 게이지 (스케일 0–40%, 점선=10/20/30/40%)")
         else:
             st.info("진보 득표력 지표가 없습니다.")
-
-        if per_1000 is not None:
-            st.markdown(
-                f"<div style='color:{COLOR_MUTED}; font-size:.90rem;'>보조지표: 유권자 1,000명당 당원 {per_1000}명</div>",
-                unsafe_allow_html=True
-            )
 
 
 # =============================
@@ -889,14 +872,13 @@ def render_region_detail_layout(
     df_prg: pd.DataFrame | None = None
 ):
     """
-    - 같은 줄 카드 높이 안정(최소 높이 + 동일 차트 높이)
-    - 연령 박스 좁게 / 성비 넓게
+    - 같은 줄 카드 높이 통일(ROW_MINH)
+    - 연령 박스/성비 박스 높이 축소(요청) + 중앙 숫자 위치 개선
     """
     _inject_global_css()
 
     st.markdown("### 👥 인구 정보")
 
-    # 바깥 비율: 왼쪽(KPI) 좁게, 오른쪽(연령·성비) 넓게
     left_col, right_col = st.columns([1, 5])
 
     with left_col:
@@ -906,10 +888,15 @@ def render_region_detail_layout(
         subcol_age, subcol_sex = st.columns([1.2, 2.8])
         with subcol_age.container(border=True):
             st.markdown("**연령 구성**")
-            render_age_highlight_chart(df_pop, box_height_px=320, width_px=300)
+            # 동일 높이 확보를 위한 래퍼
+            st.markdown("<div class='k-eq'>", unsafe_allow_html=True)
+            render_age_highlight_chart(df_pop, box_height_px=280, width_px=300)
+            st.markdown("</div>", unsafe_allow_html=True)
         with subcol_sex.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
-            render_sex_ratio_bar(df_pop, box_height_px=320)
+            st.markdown("<div class='k-eq'>", unsafe_allow_html=True)
+            render_sex_ratio_bar(df_pop, box_height_px=280)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='k-gap-sm'></div>", unsafe_allow_html=True)
 
