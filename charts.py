@@ -209,14 +209,6 @@ def render_population_box(pop_df: pd.DataFrame):
 
 # 연령 구성
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320):
-    """
-    v1.3 (버전 마커)
-    입력(모두 '명'):
-      - 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상), 전체 유권자 수
-    60~64세 = 전체 - (청년+중년+고령)  → 회색 조각(항상 포함, 강조/범례 제외)
-    강조: st.radio (Altair selection 비의존)
-    가운데 요약: 전체=총합(명), 특정=퍼센트 크게 + 명 작게
-    """
     import numpy as np
     import altair as alt
 
@@ -328,17 +320,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         )
     )
 
-    # 하이라이트(겹쳐 그리기: 같은 색 + 검은 외곽)
-    highlight = (
-        base.transform_filter("datum.is_extra == false && datum.강조 == true")
-        .mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2, padAngle=0.0)
-        .encode(
-            theta=alt.Theta("비율:Q"),
-            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
-            order=alt.Order("순서:Q", sort="ascending"),
-        )
-    )
-
+    
     # 가운데 요약
     if focus == "전체":
         big, small = f"{int(round(denom)):,}", ""
@@ -358,7 +340,6 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     )
 
     st.altair_chart(arcs_extra + arcs_main + highlight + center_big + center_small, use_container_width=False)
-    st.caption("agechart v1.3")  # ← 화면에 이 문구가 보이면 새 코드가 적용된 것
 
 # 정당성향별 득표추이
 def render_vote_trend_chart(ts: pd.DataFrame):
@@ -843,6 +824,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
