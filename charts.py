@@ -108,13 +108,11 @@ def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[
 
 
 # 인구 정보
-# 인구 정보 (population.csv 집계 + 총유권자 카드 + 유동비율 단일 막대)
 def render_population_box(pop_df: pd.DataFrame):
     import numpy as np
     import altair as alt
 
     with st.container(border=True):
-        st.markdown("**인구 정보**")
 
         if pop_df is None or pop_df.empty:
             st.info("유동인구/연령/성비 차트를 위한 데이터가 없습니다.")
@@ -144,7 +142,7 @@ def render_population_box(pop_df: pd.DataFrame):
         df[total_col] = df[total_col].apply(_to_num)
         df[float_col] = df[float_col].apply(_to_num)
 
-        # 동→구 합계 (같은 지역구코드끼리 합)
+        # 구 합계 (같은 지역구코드끼리 합)
         if code_col:
             agg = df.groupby(code_col, dropna=False)[[total_col, float_col]].sum(min_count=1).reset_index(drop=True)
             total_voters = float(agg[total_col].sum())
@@ -167,7 +165,7 @@ def render_population_box(pop_df: pd.DataFrame):
         per_thousand = mobility_rate * 1000 if mobility_rate == mobility_rate else np.nan  # NaN check
 
         # 레이아웃: 좌 카드, 우 단일 비율 막대
-        c1, c2 = st.columns([1, 3])
+        c1, c2 = st.columns([1, 2])
 
         with c1:
             st.markdown("**전체 유권자 수**")
@@ -176,16 +174,10 @@ def render_population_box(pop_df: pd.DataFrame):
             st.markdown("**유동인구**")
             st.markdown(f"{int(round(floating_pop)):,}명")
 
-            # 보조 정보: 천 명당 유동
-            if mobility_rate == mobility_rate:
-                st.caption(f"천 명당 유동 ≈ {per_thousand:,.1f}명")
-
         with c2:
             if mobility_rate == mobility_rate:  # not NaN
-                # 단일 가로 막대 (부분-전체 아님: 축은 비율)
                 bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
 
-                # 축 스케일: 너무 꽉 차지 않게 여유를 둠
                 x_max = max(0.3, float(mobility_rate) * 1.3)  # 최소 30% 범위
                 chart = (
                     alt.Chart(bar_df)
@@ -197,7 +189,7 @@ def render_population_box(pop_df: pd.DataFrame):
                         y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
                         tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
                     )
-                    .properties(width=220, height=50)  # 가로폭 축소
+                    .properties(width=220, height=100)
                 )
 
                 # 막대 끝에 값 라벨
@@ -701,6 +693,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
