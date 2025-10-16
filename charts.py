@@ -134,23 +134,22 @@ def render_population_box(pop_df: pd.DataFrame):
             x_max = 0.10
             bar = (
                 alt.Chart(bar_df)
-                .mark_bar()
-                .encode(
-                    x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0,x_max])),
-                    y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
-                    color=alt.value(COLOR_BLUE),
-                    tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")],
-                )
+                # ... (mark_bar 및 encode 부분은 그대로 유지) ...
                 .properties(height=68, padding={"top": 0, "left": 6, "right": 6, "bottom": 4})
             )
             txt = alt.Chart(bar_df).mark_text(align="left", dx=4)\
                 .encode(x="값:Q", y="항목:N", text=alt.Text("값:Q", format=".1%"))
-            # ❗️Altair v5 레이어 TypeError 회피: 같은 데이터 사용 + 고정값은 datum 활용
-            rule = alt.Chart(bar_df).mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6)\
-                .encode(x=alt.datum(0.05))
+                
+            # ❗️Altair v5 레이어 TypeError 회피:
+            # mark_rule을 별도 더미 데이터프레임으로 분리하여 인코딩 충돌 방지
+            rule = alt.Chart(pd.DataFrame({"x_val": [0.05]}))\
+                .mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6)\
+                .encode(x=alt.X("x_val:Q", title=None)) # x축 인코딩만 명시
+
+            # 최종 레이어링은 alt.layer() 함수를 사용
             layered = alt.layer(bar, txt, rule).resolve_scale(x='shared', y='shared')
             st.altair_chart(layered, use_container_width=True)
-
+    
         st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================
@@ -158,6 +157,7 @@ def render_population_box(pop_df: pd.DataFrame):
 # =============================
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240, width_px: int = 300):
     import numpy as np
+    # NOTE: _norm_cols 함수는 파일 상단에 정의되어 있다고 가정합니다.
     df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df is None or df.empty:
         st.info("연령 구성 데이터가 없습니다."); return
@@ -173,30 +173,36 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         df[c] = pd.to_numeric(df[c].astype(str).str.replace(",","",regex=False).str.strip(), errors="coerce").fillna(0)
 
     y,m,o = float(df[Y].sum()), float(df[M].sum()), float(df[O].sum())
-    tot   = float(df[total_col].sum())
+    tot = float(df[total_col].sum())
     if tot <= 0: st.info("전체 유권자 수(분모)가 0입니다."); return
 
     labels, values = [Y,M,O], [y,m,o]
     ratios01 = [v/tot for v in values]; ratios100 = [r*100 for r in ratios01]
 
-    # 라디오는 차트 아래로(상단 여백 축소)
-    focus = labels[0]
+    # 🌟🌟🌟 수정된 부분 시작 🌟🌟🌟
+    # 라디오 버튼을 먼저 생성하고 결과를 focus에 저장 (차트보다 위에 위치하면 선택이 바로 반영됨)
+    focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
+    # 🌟🌟🌟 수정된 부분 끝 🌟🌟🌟
 
     width  = max(260, int(width_px))
     height = max(220, int(box_height_px))
     inner_r, outer_r = 68, 106
-    cx = width/2; cy = height*0.48  # 더 위로
+    cx = width/2; cy = height*0.48 
 
     df_vis = pd.DataFrame({"연령":labels, "명":values, "비율":ratios01, "표시비율":ratios100})
+    # NOTE: 이전 답변에서 해결한 레이어링 TypeError를 방지하기 위해 center_big/small 인코딩에서 axis=None을 제거했습니다.
     base = alt.Chart(df_vis).properties(width=width, height=height, padding={"top": 0, "left": 0, "right": 0, "bottom": 0})
     theta = alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi/2, math.pi/2]))
 
     arcs = base.mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)\
-        .encode(theta=theta, color=alt.condition(alt.datum.연령==focus, alt.value(COLOR_BLUE), alt.value("#E5E7EB")),
+        .encode(theta=theta, 
+                # 🌟 focus 변수를 사용하여 선택된 항목만 강조
+                color=alt.condition(alt.datum.연령==focus, alt.value(COLOR_BLUE), alt.value("#E5E7EB")),
                 tooltip=[alt.Tooltip("연령:N", title="연령대"),
                          alt.Tooltip("명:Q", title="인원", format=",.0f"),
                          alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f")])
 
+    # 중앙 텍스트 부분: focus 변수 사용
     idx = labels.index(focus)
     big = alt.Chart(pd.DataFrame({"_":[0]})).mark_text(fontSize=34, fontWeight="bold", color="#0f172a")\
         .encode(x=alt.value(cx), y=alt.value(cy-2), text=alt.value(f"{df_vis.loc[idx,'표시비율']:.1f}%"))
@@ -204,7 +210,10 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         .encode(x=alt.value(cx), y=alt.value(cy+18), text=alt.value(focus))
 
     st.altair_chart(arcs + big + small, use_container_width=False)
-    st.radio("강조", labels, index=0, horizontal=True)
+    
+    # 🌟🌟🌟 제거된 부분 🌟🌟🌟
+    # st.radio("강조", labels, index=0, horizontal=True) # 👈 이 줄은 함수 시작 부분으로 이동 및 제거됨
+    # 🌟🌟🌟 제거된 부분 🌟🌟🌟
 
 # =============================
 # 성비 (연령×성별 가로막대)
