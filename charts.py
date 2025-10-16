@@ -1,5 +1,5 @@
 # =============================
-# File: charts.py (compact + ordering fix)
+# File: charts.py (compact + bugfix)
 # =============================
 from __future__ import annotations
 import re, math
@@ -54,8 +54,8 @@ def _load_index_df() -> pd.DataFrame | None:
     return None
 
 # ---------- style ----------
-ROW_MINH = 300       # 🔻 줄 높이 낮춤 (여백 축소)
-CARD_HEIGHT = 200    # 🔻 카드 높이도 낮춤
+ROW_MINH = 260       # 👈 한 줄 컨테이너 최소높이 (여백 최소화)
+CARD_HEIGHT = 190    # 👈 카드류 최소 높이
 
 COLOR_TEXT_DARK = "#111827"
 COLOR_BLUE      = "#1E6BFF"
@@ -132,7 +132,7 @@ def render_population_box(pop_df: pd.DataFrame):
         if mobility_rate == mobility_rate:
             bar_df = pd.DataFrame({"항목":["유동비율"], "값":[mobility_rate]})
             x_max = 0.10
-            chart = (
+            bar = (
                 alt.Chart(bar_df)
                 .mark_bar()
                 .encode(
@@ -143,9 +143,14 @@ def render_population_box(pop_df: pd.DataFrame):
                 )
                 .properties(height=68, padding={"top": 0, "left": 6, "right": 6, "bottom": 4})
             )
-            rule = alt.Chart(pd.DataFrame({"x":[0.05]})).mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6).encode(x="x:Q")
-            text = alt.Chart(bar_df).mark_text(align="left", dx=4).encode(x="값:Q", y="항목:N", text=alt.Text("값:Q", format=".1%"))
-            st.altair_chart(chart + text + rule, use_container_width=True)
+            txt = alt.Chart(bar_df).mark_text(align="left", dx=4)\
+                .encode(x="값:Q", y="항목:N", text=alt.Text("값:Q", format=".1%"))
+            # ❗️Altair v5 레이어 TypeError 회피: 같은 데이터 사용 + 고정값은 datum 활용
+            rule = alt.Chart(bar_df).mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6)\
+                .encode(x=alt.datum(0.05))
+            layered = alt.layer(bar, txt, rule).resolve_scale(x='shared', y='shared')
+            st.altair_chart(layered, use_container_width=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================
@@ -174,12 +179,13 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
     labels, values = [Y,M,O], [y,m,o]
     ratios01 = [v/tot for v in values]; ratios100 = [r*100 for r in ratios01]
 
-    # 🔻 라디오를 '아래'로 내려 상단 여백 축소
+    # 라디오는 차트 아래로(상단 여백 축소)
     focus = labels[0]
+
     width  = max(260, int(width_px))
     height = max(220, int(box_height_px))
     inner_r, outer_r = 68, 106
-    cx = width/2; cy = height*0.48  # 좀 더 위
+    cx = width/2; cy = height*0.48  # 더 위로
 
     df_vis = pd.DataFrame({"연령":labels, "명":values, "비율":ratios01, "표시비율":ratios100})
     base = alt.Chart(df_vis).properties(width=width, height=height, padding={"top": 0, "left": 0, "right": 0, "bottom": 0})
@@ -198,7 +204,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         .encode(x=alt.value(cx), y=alt.value(cy+18), text=alt.value(focus))
 
     st.altair_chart(arcs + big + small, use_container_width=False)
-    st.radio("강조", labels, index=0, horizontal=True)  # 🔻 차트 아래로
+    st.radio("강조", labels, index=0, horizontal=True)
 
 # =============================
 # 성비 (연령×성별 가로막대)
@@ -311,23 +317,38 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         return "기타"
     long_df["선거타입"] = long_df["선거명_표시"].map(etype)
 
-    # 기본 순서: 연도↑, 타입순서(대선→광역비례→광역단체장→총선비례→기타)
     type_rank = {"대선":1, "광역 비례":2, "광역단체장":3, "총선 비례":4, "기타":9}
     uniq = long_df[["선거명_표시","연도","선거타입"]].drop_duplicates().copy()
     uniq["순위"] = uniq["선거타입"].map(type_rank)
     uniq = uniq.sort_values(["연도","순위","선거명_표시"])
-
-    # 🔧 커스텀 이동: 2020 총선 비례 바로 다음에 2022 대선을 위치,
-    # 그리고 2022 광역 비례, 2022 광역단체장 순서로.
     order = uniq["선거명_표시"].tolist()
-    def move_in_order(labels, after_label, targets_in_order):
-        if after_label not in labels: return labels
-        base_idx = labels.index(after_label)
-        rest = [x for x in labels if x not in targets_in_order]
-        for t in targets_in_order[::-1]:
-            if t in labels: rest.insert(base_idx+1, t)
-        return rest
-    order = move_in_order(order, "2020 총선 비례", ["2022 대선","2022 광역 비례","2022 광역단체장"])
+
+    # ---- 커스텀 이동: 2020 총선 비례 다음에 2022 대선 → 2022 광역 비례 → 2022 광역단체장
+    def _first_label(labels, patt):
+        for s in labels:
+            if (hasattr(patt, "search") and patt.search(s)) or (isinstance(patt, str) and patt in s):
+                return s
+        return None
+    def reorder_after(base_list, anchor_pat, targets_in_order):
+        labels = base_list[:]
+        anchor = _first_label(labels, anchor_pat)
+        if not anchor: return labels
+        to_insert = []
+        for t in targets_in_order:
+            lab = _first_label(labels, t)
+            if lab:
+                labels.remove(lab); to_insert.append(lab)
+        idx = labels.index(anchor)
+        for t in reversed(to_insert):
+            labels.insert(idx + 1, t)
+        return labels
+    order = reorder_after(
+        order,
+        re.compile(r"^2020.*총선\s*비례"),
+        [re.compile(r"^2022.*대선"),
+         re.compile(r"^2022.*광역\s*비례"),
+         re.compile(r"^2022.*광역단체장")]
+    )
 
     party_order = ["민주","보수","진보","기타"]
     color_map = {"민주":"#152484","보수":"#E61E2B","진보":"#7B2CBF","기타":"#6C757D"}
@@ -355,7 +376,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
                  alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
     ).transform_filter(sel)
 
-    # 연도 밴드 (불필요한 여백 방지: padding 최소화)
+    # 연도 밴드 (padding 최소화)
     years = sorted(long_df["연도"].unique().tolist())
     bands = []
     for y in years:
@@ -470,7 +491,7 @@ def render_incumbent_card(cur_row: pd.DataFrame):
     career_cols = [c for c in ["최근경력","주요경력","경력","이력","최근 활동"] if c in cur_row.columns]
     raw = None
     for c in career_cols:
-        v = str(r.get(c)); 
+        v = str(r.get(c))
         if v and v.lower() not in ("nan","none"): raw = v; break
     def _split(s:str)->list[str]:
         if not s: return []
