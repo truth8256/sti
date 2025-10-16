@@ -89,25 +89,22 @@ def _load_index_df() -> pd.DataFrame | None:
 # -----------------------------
 # 스타일 상수 & 전역 CSS
 # -----------------------------
-ROW_MINH = 260
-CARD_HEIGHT = 190
+ROW_MINH = 300       # 🔻 줄 높이 낮춤 (여백 축소)
+CARD_HEIGHT = 200    # 🔻 카드 높이도 낮춤
 
 COLOR_TEXT_DARK = "#111827"
-COLOR_BLUE = "#1E6BFF"
+COLOR_BLUE      = "#1E6BFF"
 
 def _inject_global_css():
-    st.markdown(
-        f"""
-        <style>
-          .k-card {{ padding:8px 10px; }}
-          .k-eq {{ min-height:{ROW_MINH}px; display:flex; flex-direction:column; justify-content:flex-start; }}
-          .k-minh-card {{ min-height:{CARD_HEIGHT}px; }}
-          .k-kpi-title {{ color:#6B7280; font-weight:600; font-size:.95rem; }}
-          .k-kpi-value {{ font-weight:800; font-size:1.18rem; color:#111827; letter-spacing:-0.2px; }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"""
+    <style>
+      .k-card {{ padding:8px 10px; }}
+      .k-eq {{ min-height:{ROW_MINH}px; display:flex; flex-direction:column; justify-content:flex-start; }}
+      .k-minh-card {{ min-height:{CARD_HEIGHT}px; }}
+      .k-kpi-title {{ color:#6B7280; font-weight:600; font-size:.95rem; }}
+      .k-kpi-value {{ font-weight:800; font-size:1.18rem; color:#111827; letter-spacing:-0.2px; }}
+    </style>
+    """, unsafe_allow_html=True)
 
 # -----------------------------
 # 파티 칩 색상
@@ -766,6 +763,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
