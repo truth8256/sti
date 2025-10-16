@@ -284,34 +284,9 @@ elif menu == "지역별 분석":
 # -----------------------------
 # Page: 데이터 설명
 # -----------------------------
-# -----------------------------
-# Page: 데이터 설명
-# -----------------------------
 elif menu == "데이터 설명":
     st.title("🗳️ 지역구 선정 1단계 조사 결과")
     st.caption("에스티아이")
-
-    st.subheader("데이터 파일 설명")
-    st.write("- population.csv: 지역구별 인구/유권자 구조 (구 단위 합계본)")
-    st.write("- 5_na_dis_results.csv: 2024 총선 지역구별 1·2위 득표 정보")
-    st.write("- current_info.csv: 현직 의원 기본 정보")
-    st.write("- vote_trend.csv: 선거별 정당 성향 득표 추이")
-    st.write("- party_labels.csv: 정당 코드/라벨 등 매핑 정보")
-    st.write("- index_sample1012.csv: 외부 지표(PL/EE 등) *선택*")
-
-    with st.expander("각 DataFrame 컬럼 미리보기"):
-        def _cols(df, name):
-            st.markdown(f"**{name}**")
-            if df is None or len(df) == 0:
-                st.write("없음/빈 데이터")
-            else:
-                st.code(", ".join(map(str, df.columns.tolist())))
-        _cols(df_pop,   "df_pop (population)")
-        _cols(df_24,    "df_24 (results_2024)")
-        _cols(df_curr,  "df_curr (current_info)")
-        _cols(df_trend, "df_trend (vote_trend)")
-        _cols(df_party, "df_party (party_labels)")
-        _cols(df_idx,   "df_idx (index_sample1012)")
 
     # -----------------------------
     # 지표별 구성 및 해설 (외부 MD 파일 렌더)
@@ -339,8 +314,26 @@ elif menu == "데이터 설명":
                     continue
             if md_text is not None:
                 break
+
+    if md_text:
+        st.markdown(md_text)
+        st.download_button(
+            label="Markdown 파일 다운로드",
+            data=md_text,
+            file_name=(md_path_used.name if md_path_used else "지표별_구성_및_해설.md"),
+            mime="text/markdown",
+            use_container_width=True,
+        )
+        with st.expander("파일 경로 정보"):
+            st.code(str(md_path_used))
     else:
         st.info("`sti/지표별 구성 및 해설.md` 파일을 찾지 못했습니다. 경로 또는 파일명을 확인해 주세요.")
+
+# -----------------------------
+# Footer (모든 페이지 공통)
+# -----------------------------
+st.write("")
+st.caption("© 2025 전략지역구 조사 · Streamlit 대시보드")
 
 # -----------------------------
 # Footer (모든 페이지 공통)
