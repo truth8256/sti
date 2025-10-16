@@ -155,98 +155,96 @@ def render_population_box(pop_df: pd.DataFrame):
 # ---------- 연령 구성(도넛) ----------
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320, width_px: int = 260):
     """
-    선택한 연령층(청년/중년/고령)의 전체 유권자 대비 비율을
-    Plotly 게이지로 표시한다. '전체' 옵션과 60~64세 계산은 사용하지 않는다.
+    청년/중년/고령 세 조각을 모두 표시하되, 선택된 연령층만 강조하는 도넛 차트.
+    가운데에는 선택한 층의 비율과 인원수를 표시.
     """
     import numpy as np
-    import plotly.graph_objects as go
+    import altair as alt
 
     if pop_df is None or pop_df.empty:
         st.info("연령 구성 데이터가 없습니다.")
         return
 
     df = _norm_cols(pop_df.copy())
-
-    Y_COL = "청년층(18~39세)"
-    M_COL = "중년층(40~59세)"
-    O_COL = "고령층(65세 이상)"
+    Y_COL, M_COL, O_COL = "청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"
     TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
 
-    # 필요한 컬럼 존재 확인
-    need_cols = [Y_COL, M_COL, O_COL]
-    missing = [c for c in need_cols if c not in df.columns]
-    if missing:
-        st.error("연령 구성 컬럼이 없습니다: " + ", ".join(missing))
-        return
-
+    for c in (Y_COL, M_COL, O_COL):
+        if c not in df.columns:
+            st.error(f"필수 컬럼이 없습니다: {c}")
+            return
     total_col = next((c for c in TOTAL_CANDIDATES if c in df.columns), None)
     if total_col is None:
         st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # 숫자화
-    for c in need_cols + [total_col]:
+    for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
             errors="coerce",
         ).fillna(0)
 
-    # 합계(동 → 구)
-    y_sum = float(df[Y_COL].sum())
-    m_sum = float(df[M_COL].sum())
-    o_sum = float(df[O_COL].sum())
+    y, m, o = float(df[Y_COL].sum()), float(df[M_COL].sum()), float(df[O_COL].sum())
     total_v = float(df[total_col].sum())
-
     if total_v <= 0:
         st.info("전체 유권자 수(분모)가 0입니다.")
         return
 
-    # 선택 UI (전체 제거)
-    choice = st.radio(
-        label="연령 선택",
-        options=[Y_COL, M_COL, O_COL],
-        index=0,
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+    labels = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
+    values = [y, m, o]
+    ratios = [v / total_v * 100.0 for v in values]
 
-    value_map = {
-        Y_COL: y_sum,
-        M_COL: m_sum,
-        O_COL: o_sum,
-    }
+    focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
+
+    df_vis = pd.DataFrame({
+        "연령": labels,
+        "명": values,
+        "비율": ratios,
+        "투명도": [1.0 if l == focus else 0.35 for l in labels]
+    })
+
+    width, height = max(220, int(width_px)), max(200, int(box_height_px) - 56)
+    cx, cy = width / 2, height / 2
+
     color_map = {
-        Y_COL: "#4D8EFF",
-        M_COL: "#1E6BFF",
-        O_COL: "#334155",
+        "청년층(18~39세)": "#4D8EFF",
+        "중년층(40~59세)": "#1E6BFF",
+        "고령층(65세 이상)": "#334155",
     }
 
-    sel_value = value_map[choice]
-    pct = (sel_value / total_v) * 100.0
+    color_domain = labels
+    color_range = [color_map[k] for k in color_domain]
 
-    # Plotly 게이지
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=pct,
-            number={"suffix": "%", "font": {"size": 80}},  # 가운데 숫자 크게
-            gauge={
-                "axis": {"range": [0, 100], "visible": False},
-                "bar": {"color": color_map[choice], "thickness": 1},
-                "bgcolor": "lightgray",
-            },
-            domain={"x": [0, 1], "y": [0, 1]},
+    base = alt.Chart(df_vis).properties(width=width, height=height)
+    arcs = (
+        base.mark_arc(innerRadius=70, outerRadius=110, cornerRadius=6, stroke="white", strokeWidth=1)
+        .encode(
+            theta=alt.Theta("비율:Q"),
+            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range),
+                            legend=alt.Legend(title=None, orient="top")),
+            opacity=alt.Opacity("투명도:Q", scale=None),
+            tooltip=[
+                alt.Tooltip("연령:N"),
+                alt.Tooltip("명:Q", format=",.0f"),
+                alt.Tooltip("비율:Q", format=".1f", title="비율(%)")
+            ],
         )
     )
-    fig.update_layout(
-        margin=dict(l=16, r=16, t=16, b=8),
-        height=max(260, int(box_height_px)),
-    )
 
-    st.plotly_chart(fig, use_container_width=True)
+    # 가운데 표시
+    idx = labels.index(focus)
+    big_txt = f"{ratios[idx]:.1f}%"
+    small_txt = f"{int(values[idx]):,}명"
 
-    # 부가 정보(원하면 주석 해제)
-    # st.caption(f"{choice} = {int(round(sel_value)):,}명 / 전체 {int(round(total_v)):,}명")
+    center_big = alt.Chart(pd.DataFrame({"x": [0]})).mark_text(
+        fontSize=20, fontWeight="bold", color="#0f172a"
+    ).encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big_txt))
+
+    center_small = alt.Chart(pd.DataFrame({"x": [0]})).mark_text(
+        fontSize=12, color="#475569"
+    ).encode(x=alt.value(cx), y=alt.value(cy + 14), text=alt.value(small_txt))
+
+    st.altair_chart(arcs + center_big + center_small, use_container_width=True)
 
 # ---------- 성비(연령대×성별 가로 막대) ----------
 def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
@@ -704,6 +702,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
