@@ -154,8 +154,15 @@ def render_population_box(pop_df: pd.DataFrame):
 
 # ---------- 연령 구성(도넛) ----------
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280, width_px: int = 360):
+    """
+    청년/중년/고령 3조각 모두 표시 + 선택 항목만 강조하는 '반원(half-donut)' 차트
+    - 범례 제거
+    - 중앙에 큰 숫자(%) + 라벨
+    - '전체' 옵션/60~64 계산 없음
+    """
     import numpy as np
     import altair as alt
+    import math
 
     if pop_df is None or pop_df.empty:
         st.info("연령 구성 데이터가 없습니다.")
@@ -165,6 +172,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
     Y_COL, M_COL, O_COL = "청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"
     TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
 
+    # 필수 컬럼 확인
     for c in (Y_COL, M_COL, O_COL):
         if c not in df.columns:
             st.error(f"필수 컬럼이 없습니다: {c}")
@@ -174,12 +182,14 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
+    # 숫자화
     for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
             errors="coerce",
         ).fillna(0)
 
+    # 합계(동→구)
     y, m, o = float(df[Y_COL].sum()), float(df[M_COL].sum()), float(df[O_COL].sum())
     total_v = float(df[total_col].sum())
     if total_v <= 0:
@@ -188,63 +198,51 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 
     labels = [Y_COL, M_COL, O_COL]
     values = [y, m, o]
-    ratios = [v / total_v for v in values]  # 0~1
-    focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
+    ratios01 = [v / total_v for v in values]   # 0~1
+    ratios100 = [r * 100.0 for r in ratios01]  # 0~100%
 
-    # ----- 반원(π 라디안) 각도 계산 -----
-    # 누적 비율로 조각 시작/끝 각도를 직접 계산 (-π ~ 0 : 위쪽 반원)
-    PI = 3.141592653589793
-    starts = []
-    ends = []
-    acc = 0.0
-    for r in ratios:
-        start = -PI + acc * PI
-        acc += r
-        end = -PI + acc * PI
-        starts.append(start)
-        ends.append(end)
+    focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
 
     color_map = {Y_COL: "#4D8EFF", M_COL: "#1E6BFF", O_COL: "#334155"}
     df_vis = pd.DataFrame({
         "연령": labels,
         "명": values,
-        "비율": [r * 100.0 for r in ratios],
-        "start": starts,
-        "end": ends,
+        "비율": ratios01,         # θ 합계=1 기준
+        "표시비율": ratios100,     # 툴팁/텍스트용 %
         "투명도": [1.0 if l == focus else 0.35 for l in labels],
         "색": [color_map[l] for l in labels],
     })
 
-    # 크기/반경 설정
+    # 크기/반경/중앙 텍스트 위치
     width  = max(320, int(width_px))
     height = max(220, int(box_height_px))
     inner_r, outer_r = 70, 110
     cx = width / 2
-    cy = height * 0.65  # 중앙 텍스트 위치
+    cy = height * 0.65  # 반원이 위쪽이므로 약간 아래에 배치
 
     base = alt.Chart(df_vis).properties(width=width, height=height)
 
-    # 반원 아크: startAngle / endAngle → encoding 채널로 지정 (스키마 OK)
+    # ✅ 반원: theta 스케일의 range를 [-π, 0]로 제한해 위쪽 반원만 사용
     arcs = (
         base
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6,
                   stroke="white", strokeWidth=1)
         .encode(
-            startAngle="start:Q",
-            endAngle="end:Q",
-            color=alt.Color("색:N", scale=None, legend=None), 
+            theta=alt.Theta("비율:Q", stack=True,
+                            scale=alt.Scale(range=[-math.pi, 0])),  # 반원
+            color=alt.Color("색:N", scale=None, legend=None),        # 범례 제거
             opacity=alt.Opacity("투명도:Q", scale=None),
             tooltip=[
                 alt.Tooltip("연령:N"),
                 alt.Tooltip("명:Q", format=",.0f"),
-                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
+                alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f"),
             ],
         )
     )
 
-    # 중앙 큰 숫자 + 라벨 (선택 항목 표시)
+    # 중앙 큰 숫자(+라벨)
     idx = labels.index(focus)
-    big_txt = f"{df_vis.loc[idx, '비율']:.1f}%"
+    big_txt = f"{df_vis.loc[idx, '표시비율']:.1f}%"
     center_big = (
         alt.Chart(pd.DataFrame({"x":[0]}))
         .mark_text(fontSize=40, fontWeight="bold", color="#0f172a")
@@ -256,6 +254,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         .encode(x=alt.value(cx), y=alt.value(cy + 16), text=alt.value(focus))
     )
 
+    # 고정 폭/높이로 렌더(중앙 텍스트 위치 안정)
     st.altair_chart(arcs + center_big + center_small, use_container_width=False)
 
 # ---------- 성비(연령대×성별 가로 막대) ----------
@@ -714,6 +713,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
