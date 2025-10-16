@@ -26,6 +26,7 @@ from charts import (
     render_results_2024_card,
     render_incumbent_card,
     render_prg_party_box,
+    render_region_detail_layout,
 )
 
 
