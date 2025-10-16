@@ -108,11 +108,13 @@ def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[
 
 
 # 인구 정보
+# 인구 정보 (population.csv 집계 + 총유권자 카드 + 유동비율 단일 막대)
 def render_population_box(pop_df: pd.DataFrame):
     import numpy as np
     import altair as alt
 
     with st.container(border=True):
+        st.markdown("**인구 정보**")
 
         if pop_df is None or pop_df.empty:
             st.info("유동인구/연령/성비 차트를 위한 데이터가 없습니다.")
@@ -142,7 +144,7 @@ def render_population_box(pop_df: pd.DataFrame):
         df[total_col] = df[total_col].apply(_to_num)
         df[float_col] = df[float_col].apply(_to_num)
 
-        # 구 합계 (같은 지역구코드끼리 합)
+        # 동→구 합계 (같은 지역구코드끼리 합)
         if code_col:
             agg = df.groupby(code_col, dropna=False)[[total_col, float_col]].sum(min_count=1).reset_index(drop=True)
             total_voters = float(agg[total_col].sum())
@@ -157,42 +159,62 @@ def render_population_box(pop_df: pd.DataFrame):
 
         total_voters = 0.0 if np.isnan(total_voters) else total_voters
         floating_pop = 0.0 if np.isnan(floating_pop) else floating_pop
-        floating_pop = max(0.0, min(floating_pop, total_voters))
-        others = max(0.0, total_voters - floating_pop)
 
-        # 좌: 텍스트(전체 유권자 수 / 유동인구) / 우: 누적 막대
+        # 유동비율 (부분-전체 개념 아님: 해석은 '변동 강도')
+        mobility_rate = np.nan
+        if total_voters > 0:
+            mobility_rate = floating_pop / total_voters
+        per_thousand = mobility_rate * 1000 if mobility_rate == mobility_rate else np.nan  # NaN check
+
+        # 레이아웃: 좌 카드, 우 단일 비율 막대
         c1, c2 = st.columns([1, 3])
 
         with c1:
             st.markdown("**전체 유권자 수**")
             st.markdown(f"{int(round(total_voters)):,}명")
-            st.markdown("")  
+
             st.markdown("**유동인구**")
             st.markdown(f"{int(round(floating_pop)):,}명")
 
-        with c2:
-            bar_df = pd.DataFrame({
-                "구성": ["유동인구","그 외"],
-                "값": [floating_pop, others],
-                "x": ["전체 유권자","전체 유권자"]
-            })
+            # 보조 정보: 천 명당 유동
+            if mobility_rate == mobility_rate:
+                st.caption(f"천 명당 유동 ≈ {per_thousand:,.1f}명")
 
-            chart = (
-                alt.Chart(bar_df)
-                .mark_bar()
-                .encode(
-                    x=alt.X("x:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
-                    y=alt.Y("값:Q", stack="zero", axis=alt.Axis(title=None)),
-                    color=alt.Color(
-                        "구성:N",
-                        scale=alt.Scale(domain=["유동인구","그 외"], range=["#7C83FD","#D6DAF8"]),
-                        legend=alt.Legend(title=None, orient="right", values=["유동인구"])  
-                    ),
-                    tooltip=[alt.Tooltip("구성:N"), alt.Tooltip("값:Q", format=",")]
+        with c2:
+            if mobility_rate == mobility_rate:  # not NaN
+                # 단일 가로 막대 (부분-전체 아님: 축은 비율)
+                bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
+
+                # 축 스케일: 너무 꽉 차지 않게 여유를 둠
+                x_max = max(0.3, float(mobility_rate) * 1.3)  # 최소 30% 범위
+                chart = (
+                    alt.Chart(bar_df)
+                    .mark_bar()
+                    .encode(
+                        x=alt.X("값:Q",
+                                axis=alt.Axis(title=None, format=".0%"),
+                                scale=alt.Scale(domain=[0, x_max])),
+                        y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
+                        tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
+                    )
+                    .properties(width=220, height=50)  # 가로폭 축소
                 )
-                .properties(width=220, height=160)  # 그래프 크기 
-            )
-            st.altair_chart(chart, use_container_width=False)
+
+                # 막대 끝에 값 라벨
+                text = (
+                    alt.Chart(bar_df)
+                    .mark_text(align="left", dx=4)
+                    .encode(
+                        x=alt.X("값:Q", scale=alt.Scale(domain=[0, x_max])),
+                        y=alt.Y("항목:N"),
+                        text=alt.Text("값:Q", format=".1%")
+                    )
+                )
+
+                st.altair_chart(chart + text, use_container_width=False)
+                st.caption("유동비율 = (전입 + 전출) ÷ 전체 유권자 (동일 기간 기준)")
+            else:
+                st.info("유동비율을 계산할 수 없습니다.")
 
 
 # 정당성향별 득표추이
@@ -679,6 +701,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
