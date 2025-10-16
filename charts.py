@@ -1,5 +1,5 @@
 # =============================
-# File: charts.py (patched, error-fixed)
+# File: charts.py (patched, error-free)
 # =============================
 from __future__ import annotations
 import re
@@ -100,7 +100,6 @@ def _inject_global_css():
       .k-gap-md { height: 10px; }
       .k-kpi-title { color:#6B7280; font-weight:600; font-size:0.95rem; }
       .k-kpi-value { font-weight:800; font-size:1.20rem; color:#111827; letter-spacing:-0.2px; }
-      /* Consistent min-heights so cards in the same row align visually */
       .k-minh-320 { min-height: 320px; }
       .k-minh-180 { min-height: 180px; }
     </style>
@@ -376,7 +375,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
 
     chart = (
         alt.Chart(tidy)
-        .mark_bar(size=20)  # 간격/굵기는 size로 제어 (configure_bar 사용 안함)
+        .mark_bar(size=20)  # configure_bar 대신 size로 제어
         .encode(
             y=alt.Y(
                 "연령대표시:N",
@@ -388,7 +387,8 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
                 "비율:Q",
                 stack="normalize",
                 title="구성비(%)",
-                axis=alt.Axis(format=".0%"),
+                # 50%(0.5) 눈금/그리드가 반드시 뜨도록 values 지정
+                axis=alt.Axis(format=".0%", values=[0, 0.5, 1.0], grid=True),
             ),
             color=alt.Color(
                 "성별:N",
@@ -406,11 +406,8 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
         .properties(height=height_px)
     )
 
-    # 50% 균형선
-    mid = alt.Chart(pd.DataFrame({"x":[0.5]})).mark_rule(strokeDash=[4,4], opacity=0.5).encode(x="x:Q")
-
-    # 레이어링 시 TypeError 방지를 위해 configure_* 사용하지 않음
-    st.altair_chart(chart + mid, use_container_width=True)
+    # ⚠️ Altair v5의 레이어 이슈 회피: 별도 rule 레이어 없이 축 그리드로 50% 표시
+    st.altair_chart(chart, use_container_width=True)
 
 
 # =============================
@@ -486,6 +483,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     # 정렬용 컬럼
     long_df["연도"] = long_df["선거명_표시"].str.extract(r"^(20\d{2})").astype(int)
+
     def _etype(s: str) -> str:
         if "대선" in s: return "대선"
         if "광역 비례" in s: return "광역 비례"
@@ -496,7 +494,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     long_df = long_df.sort_values(["연도","선거타입","선거명_표시","계열"]).drop_duplicates(subset=["선거명_표시","계열","득표율"])
 
-    # === 2022 커스텀 정렬 로직 (대선 → 광역 비례 → 광역단체장 보장) ===
+    # 2022 커스텀 정렬 (대선 → 광역 비례 → 광역단체장 보장)
     type_rank_default = {"대선": 1, "광역 비례": 2, "광역단체장": 3, "총선 비례": 4, "기타": 9}
     type_rank_2022    = {"대선": 0, "광역 비례": 1, "광역단체장": 2, "총선 비례": 3, "기타": 9}
 
@@ -514,7 +512,6 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     uniq_labels["타입순위"] = uniq_labels.apply(_rank_row, axis=1)
     uniq_labels = uniq_labels.sort_values(["연도", "타입순위", "선거명_표시"])
     order_by_year = uniq_labels["선거명_표시"].tolist()
-    # === 커스텀 정렬 끝 ===
 
     party_order = ["민주","보수","진보","기타"]
     color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
@@ -547,7 +544,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         .mark_circle(size=140)
         .encode(
             x="선거명_표시:N",
-            y="득표율:Q",
+            y=alt.Y("득표율:Q"),
             color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors), legend=None),
             opacity=alt.condition(selector, alt.value(1), alt.value(0)),
             tooltip=[
@@ -909,10 +906,10 @@ def render_region_detail_layout(
         subcol_age, subcol_sex = st.columns([1.2, 2.8])
         with subcol_age.container(border=True):
             st.markdown("**연령 구성**")
-            render_age_highlight_chart(df_pop, box_height_px=320, width_px=300)  # 높이 통일
+            render_age_highlight_chart(df_pop, box_height_px=320, width_px=300)
         with subcol_sex.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
-            render_sex_ratio_bar(df_pop, box_height_px=320)  # 높이 통일
+            render_sex_ratio_bar(df_pop, box_height_px=320)
 
     st.markdown("<div class='k-gap-sm'></div>", unsafe_allow_html=True)
 
