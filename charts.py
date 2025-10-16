@@ -704,23 +704,21 @@ def render_region_detail_layout(
     df_prg: pd.DataFrame | None = None,
 ):
 
-    # ============ 상단: 인구정보 ============ #
-    st.markdown("### 👥 인구 정보")
-    top_left, top_right = st.columns(2)
+# ============ 상단: 인구정보 ============ #
+st.markdown("### 👥 인구 정보")
+top_left, top_right = st.columns(2)
 
-    # 왼쪽: 다시 1:2로 세분 (현재는 자리, 다음 단계에서 df_pop 기반 차트로 대체)
-    left_small, left_large = top_left.columns([1, 2])
-    with left_small.container(border=True, height="stretch"):
-        st.markdown("#### 유권자 이동")
-        st.info("세로 막대차트 (예: 전입/전출, 이동률 등) 자리")
-    with left_large:
-        subcol1, subcol2 = st.columns(2)
-        with subcol1.container(border=True, height="stretch"):
-            st.markdown("#### 연령 구성")
-            st.info("파이차트 자리")
-        with subcol2.container(border=True, height="stretch"):
-            st.markdown("#### 성비")
-            st.info("가로 막대차트 자리")
+with top_left:
+    render_population_box(df_pop)
+    
+with top_right:
+    subcol1, subcol2 = st.columns(2)
+    with subcol1.container(border=True):
+        st.markdown("#### 연령 구성")
+        st.info("파이차트 자리")
+    with subcol2.container(border=True):
+        st.markdown("#### 성비")
+        st.info("가로 막대차트 자리")
 
     # ============ 중간: 득표 추이(실제 차트 호출) ============ #
     st.markdown("### 📈 정당성향별 득표추이")
@@ -735,6 +733,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
