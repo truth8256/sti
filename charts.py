@@ -209,14 +209,6 @@ def render_population_box(pop_df: pd.DataFrame):
 
 # 연령 구성
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320, width_px: int = 260):
-    """
-    안정 버전 v1.6
-    - 입력(모두 '명'): 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상), 전체 유권자 수
-    - 60~64세 = 전체 - (청년+중년+고령) → 회색 조각(항상 포함, 버튼/범례 제외)
-    - 강조: st.radio로 제어(Altair selection 미사용). 어떤 선택에서도 차트가 '사라지지 않도록' 레이어 분리 + 투명도 처리.
-    - 하이라이트: 동일한 데이터·정렬·반지름·패딩을 공유하도록 강제(겉도는 테두리 방지).
-    - 가운데 요약: 전체(합계만), 특정(퍼센트 크게 + 명 작게)
-    """
     import numpy as np
     import pandas as pd
     import altair as alt
@@ -296,12 +288,10 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
 
     mark_common = dict(
         innerRadius=inner_r,
-        outerRadius=outer_r,          # ★ 모든 레이어 동일한 반지름 강제
-        padAngle=pad_ang,             # ★ 패딩 동일
+        outerRadius=outer_r,
+        padAngle=pad_ang,
         cornerRadius=corner,
         strokeJoin="round",
-        startAngle=0,                 # ★ 시작/끝 각도 고정 (정렬 불일치 방지)
-        endAngle=6.283185307179586,   #   (2π)
     )
 
     # ---------- 색상 ----------
@@ -375,7 +365,6 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     )
 
     # ---------- 레이어 3: 하이라이트(테두리만) ----------
-    # fillOpacity=0 으로 완전 투명 채움 + 검은 테두리 → '겉도는' 현상을 막기 위해 반지름/패딩/각도 모두 동일
     highlight = (
         base_high
         .mark_arc(**mark_common, stroke="#111827", strokeWidth=2.5, fillOpacity=0.0001)
@@ -404,10 +393,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         .encode(x=alt.value(cx), y=alt.value(cy + 14), text=alt.value(small))
     )
 
-    st.altair_chart(
-        arcs_extra + arcs_main + highlight + center_big + center_small,
-        use_container_width=False
-    )
+    st.altair_chart(arcs_extra + arcs_main + highlight + center_big + center_small, use_container_width=False)
 
 # 정당성향별 득표추이
 def render_vote_trend_chart(ts: pd.DataFrame):
@@ -892,6 +878,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
