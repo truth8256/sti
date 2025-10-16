@@ -643,21 +643,21 @@ def render_region_detail_layout(
     df_prg: pd.DataFrame | None = None,
 ):
 
-# ============ 상단: 인구정보 ============ #
-st.markdown("### 👥 인구 정보")
-top_left, top_right = st.columns(2)
-
-with top_left:
-    render_population_box(df_pop)
-
-with top_right:
-    subcol1, subcol2 = st.columns(2)
-    with subcol1.container(border=True, height="stretch"):
-        st.markdown("#### 연령 구성")
-        st.info("파이차트 자리")
-    with subcol2.container(border=True, height="stretch"):
-        st.markdown("#### 성비")
-        st.info("가로 막대차트 자리")
+    # ============ 상단: 인구정보 ============ #
+    st.markdown("### 👥 인구 정보")
+    top_left, top_right = st.columns(2)
+    
+    with top_left:
+        render_population_box(df_pop)
+    
+    with top_right:
+        subcol1, subcol2 = st.columns(2)
+        with subcol1.container(border=True, height="stretch"):
+            st.markdown("#### 연령 구성")
+            st.info("파이차트 자리")
+        with subcol2.container(border=True, height="stretch"):
+            st.markdown("#### 성비")
+            st.info("가로 막대차트 자리")
 
     # ============ 중간: 득표 추이(실제 차트 호출) ============ #
     st.markdown("### 📈 정당성향별 득표추이")
@@ -672,4 +672,5 @@ with top_right:
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
