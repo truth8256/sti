@@ -1,5 +1,5 @@
 # =============================
-# File: charts.py (patched)
+# File: charts.py (patched, error-fixed)
 # =============================
 from __future__ import annotations
 import re
@@ -91,7 +91,7 @@ COLOR_MUTED     = "#334155"
 COLOR_BLUE      = "#1E6BFF"
 COLOR_GRAY_BAR  = "#E5E7EB"
 
-# ---- Global micro CSS (card padding / section gap / font smoothing)
+# ---- Global micro CSS (card padding / section gap)
 def _inject_global_css():
     st.markdown("""
     <style>
@@ -173,7 +173,7 @@ def render_population_box(pop_df: pd.DataFrame):
         floating_pop = 0.0 if np.isnan(floating_pop) else floating_pop
         mobility_rate = floating_pop / total_voters if total_voters > 0 else float("nan")
 
-        # 중앙 KPI: '진보당 현황'과 동일 톤/여백
+        # 중앙 KPI
         st.markdown(
             f"""
             <div class="k-card" style="display:flex; flex-direction:column; align-items:center; text-align:center;">
@@ -376,7 +376,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
 
     chart = (
         alt.Chart(tidy)
-        .mark_bar(size=20)
+        .mark_bar(size=20)  # 간격/굵기는 size로 제어 (configure_bar 사용 안함)
         .encode(
             y=alt.Y(
                 "연령대표시:N",
@@ -404,12 +404,12 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
             ],
         )
         .properties(height=height_px)
-        .configure_bar(binSpacing=4)
     )
 
     # 50% 균형선
     mid = alt.Chart(pd.DataFrame({"x":[0.5]})).mark_rule(strokeDash=[4,4], opacity=0.5).encode(x="x:Q")
 
+    # 레이어링 시 TypeError 방지를 위해 configure_* 사용하지 않음
     st.altair_chart(chart + mid, use_container_width=True)
 
 
@@ -418,7 +418,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
 # =============================
 def render_vote_trend_chart(ts: pd.DataFrame):
     """
-    - 2022년도 정렬: 2022 대선 → 2022 광역 비례 → 2022 광역단체장
+    - 2022년도 정렬: 2022 대선 → 2022 광역 비례 → 2022 광역단체장 (보장)
     - 연도 구간 배경 밴드로 가독 보강
     """
     if ts is None or ts.empty:
@@ -496,20 +496,25 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     long_df = long_df.sort_values(["연도","선거타입","선거명_표시","계열"]).drop_duplicates(subset=["선거명_표시","계열","득표율"])
 
-    # 최종 x축 순서 (2022 커스텀)
-    order_by_year = []
-    for y in sorted(long_df["연도"].unique()):
-        sub = long_df[long_df["연도"] == y]
-        if y == 2022:
-            preferred = ["대선", "광역 비례", "광역단체장"]
-            for t in preferred:
-                labels = sub[sub["선거타입"] == t]["선거명_표시"].unique().tolist()
-                order_by_year.extend(labels)
-            others = sub[~sub["선거타입"].isin(preferred)]["선거명_표시"].unique().tolist()
-            order_by_year.extend(others)
-        else:
-            labels = sub["선거명_표시"].unique().tolist()
-            order_by_year.extend(labels)
+    # === 2022 커스텀 정렬 로직 (대선 → 광역 비례 → 광역단체장 보장) ===
+    type_rank_default = {"대선": 1, "광역 비례": 2, "광역단체장": 3, "총선 비례": 4, "기타": 9}
+    type_rank_2022    = {"대선": 0, "광역 비례": 1, "광역단체장": 2, "총선 비례": 3, "기타": 9}
+
+    uniq_labels = (
+        long_df[["선거명_표시", "연도", "선거타입"]]
+        .drop_duplicates()
+        .copy()
+    )
+
+    def _rank_row(row):
+        if int(row["연도"]) == 2022:
+            return type_rank_2022.get(row["선거타입"], 9)
+        return type_rank_default.get(row["선거타입"], 9)
+
+    uniq_labels["타입순위"] = uniq_labels.apply(_rank_row, axis=1)
+    uniq_labels = uniq_labels.sort_values(["연도", "타입순위", "선거명_표시"])
+    order_by_year = uniq_labels["선거명_표시"].tolist()
+    # === 커스텀 정렬 끝 ===
 
     party_order = ["민주","보수","진보","기타"]
     color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
@@ -558,7 +563,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     years = sorted(long_df["연도"].unique().tolist())
     band_df = []
     for y in years:
-        labels = [l for l in order_by_year if str(y) == l[:4]]
+        labels = uniq_labels.loc[uniq_labels["연도"] == y, "선거명_표시"].tolist()
         if labels:
             band_df.append({"from": labels[0], "to": labels[-1], "연도": y})
     if band_df:
