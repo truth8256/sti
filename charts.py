@@ -174,7 +174,6 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # 숫자화 및 합계(동 → 구)
     for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
@@ -189,43 +188,51 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 
     labels = [Y_COL, M_COL, O_COL]
     values = [y, m, o]
-    ratios = [v / total_v * 100.0 for v in values]
-
+    ratios = [v / total_v for v in values]  # 0~1
     focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
 
+    # ----- 반원(π 라디안) 각도 계산 -----
+    # 누적 비율로 조각 시작/끝 각도를 직접 계산 (-π ~ 0 : 위쪽 반원)
+    PI = 3.141592653589793
+    starts = []
+    ends = []
+    acc = 0.0
+    for r in ratios:
+        start = -PI + acc * PI
+        acc += r
+        end = -PI + acc * PI
+        starts.append(start)
+        ends.append(end)
+
+    color_map = {Y_COL: "#4D8EFF", M_COL: "#1E6BFF", O_COL: "#334155"}
     df_vis = pd.DataFrame({
         "연령": labels,
         "명": values,
-        "비율": ratios,
-        "투명도": [1.0 if l == focus else 0.35 for l in labels]
+        "비율": [r * 100.0 for r in ratios],
+        "start": starts,
+        "end": ends,
+        "투명도": [1.0 if l == focus else 0.35 for l in labels],
+        "색": [color_map[l] for l in labels],
     })
 
+    # 크기/반경 설정
     width  = max(320, int(width_px))
     height = max(220, int(box_height_px))
-    inner_r = 70
-    outer_r = 110
-    PI = 3.141592653589793
-
-    color_map = {
-        Y_COL: "#4D8EFF",
-        M_COL: "#1E6BFF",
-        O_COL: "#334155",
-    }
-    color_domain = labels
-    color_range  = [color_map[k] for k in color_domain]
+    inner_r, outer_r = 70, 110
+    cx = width / 2
+    cy = height * 0.65  # 중앙 텍스트 위치
 
     base = alt.Chart(df_vis).properties(width=width, height=height)
 
+    # 반원 아크: startAngle / endAngle → encoding 채널로 지정 (스키마 OK)
     arcs = (
         base
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6,
-                  stroke="white", strokeWidth=1,
-                  startAngle=-PI, endAngle=0)  # 반원
+                  stroke="white", strokeWidth=1)
         .encode(
-            theta=alt.Theta("비율:Q"),
-            color=alt.Color("연령:N",
-                            scale=alt.Scale(domain=color_domain, range=color_range),
-                            legend=None),              # ✅ 범례 제거
+            startAngle="start:Q",
+            endAngle="end:Q",
+            color=alt.Color("색:N", scale=None, legend=None), 
             opacity=alt.Opacity("투명도:Q", scale=None),
             tooltip=[
                 alt.Tooltip("연령:N"),
@@ -235,20 +242,18 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         )
     )
 
+    # 중앙 큰 숫자 + 라벨 (선택 항목 표시)
     idx = labels.index(focus)
-    big_txt = f"{ratios[idx]:.1f}%"
-    cx = width / 2
-    cy = height * 0.65
-
+    big_txt = f"{df_vis.loc[idx, '비율']:.1f}%"
     center_big = (
         alt.Chart(pd.DataFrame({"x":[0]}))
-        .mark_text(fontSize=36, fontWeight="bold", color="#0f172a")  # ✅ 크게
-        .encode(x=alt.value(cx), y=alt.value(cy), text=alt.value(big_txt))
+        .mark_text(fontSize=40, fontWeight="bold", color="#0f172a")
+        .encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big_txt))
     )
     center_small = (
         alt.Chart(pd.DataFrame({"x":[0]}))
         .mark_text(fontSize=12, color="#475569")
-        .encode(x=alt.value(cx), y=alt.value(cy + 20), text=alt.value(focus))
+        .encode(x=alt.value(cx), y=alt.value(cy + 16), text=alt.value(focus))
     )
 
     st.altair_chart(arcs + center_big + center_small, use_container_width=False)
@@ -709,6 +714,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
