@@ -334,19 +334,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
         .properties(height=max(180, box_height_px - 60))
     )
 
-    text = (
-        alt.Chart(tidy)
-        .mark_text(align="left", dx=4, baseline="middle")
-        .encode(
-            y=alt.Y("연령대:N", sort=age_buckets),
-            x=alt.X("명:Q"),
-            text=alt.Text("명:Q", format=",.0f"),
-            detail="성별:N",
-            color=alt.value("#334155")
-        )
-    )
-
-    st.altair_chart(chart + text, use_container_width=True)
+    st.altair_chart(chart, use_container_width=True)
 
 # ---------- 정당성향별 득표추이 ----------
 def render_vote_trend_chart(ts: pd.DataFrame):
@@ -736,4 +724,5 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
