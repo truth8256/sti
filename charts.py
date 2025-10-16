@@ -362,94 +362,60 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     label_col = next((c for c in ["계열","성향","정당성향","party_label","label"] if c in df.columns), None)
     value_col = next((c for c in ["득표율","비율","share","ratio","pct","prop"] if c in df.columns), None)
-    wide_value_cols = [c for c in ["민주","보수","진보","기타"] if c in df.columns]
-
-    prefer_ids = ["선거명","election","선거","분류","연도","year"]
-    fallback_ids = ["코드","code"]
-    id_col = next((c for c in prefer_ids if c in df.columns), None)
-    if id_col is None:
-        id_col = next((c for c in fallback_ids if c in df.columns), None)
+    wide_cols = [c for c in ["민주","보수","진보","기타"] if c in df.columns]
+    id_col  = next((c for c in ["선거명","election","분류","연도","year"] if c in df.columns), None)
     year_col = next((c for c in ["연도","year"] if c in df.columns), None)
 
-    if wide_value_cols:
-        if not id_col:
-            st.warning("선거명을 식별할 컬럼이 필요합니다. (선거명/election/연도/코드)")
-            return
-        long_df = df.melt(id_vars=id_col, value_vars=wide_value_cols, var_name="계열", value_name="득표율")
-        base_elec = long_df[id_col].astype(str)
+    if wide_cols:
+        if not id_col: st.info("선거명을 식별할 컬럼이 필요합니다."); return
+        long_df = df.melt(id_vars=id_col, value_vars=wide_cols, var_name="계열", value_name="득표율")
+        base_e = long_df[id_col].astype(str)
     else:
-        if not (label_col and value_col):
-            st.warning("정당 성향(계열)과 득표율 컬럼이 필요합니다.")
-            return
+        if not (label_col and value_col): st.info("정당 성향(계열)과 득표율 컬럼이 필요합니다."); return
         long_df = df.rename(columns={label_col:"계열", value_col:"득표율"}).copy()
-        if id_col:
-            base_elec = long_df[id_col].astype(str)
-        elif year_col:
-            base_elec = long_df[year_col].astype(str)
-        else:
-            st.warning("선거명을 식별할 컬럼이 필요합니다. (선거명/election/연도/코드)")
-            return
+        if id_col: base_e = long_df[id_col].astype(str)
+        elif year_col: base_e = long_df[year_col].astype(str)
+        else: st.info("선거명을 식별할 컬럼이 필요합니다."); return
 
     def _norm_token(s: str) -> str:
-        s = str(s).strip().replace("-", "_").replace(" ", "_").upper()
-        s = re.sub(r"_+", "_", s)
+        s = str(s).strip().replace("-","_").replace(" ","_").upper()
+        return re.sub(r"_+","_", s)
+    CODE = re.compile(r"^(20\d{2})(?:_([SG]))?_(NA|LOC|PRESIDENT)(?:_(PRO|GOV))?$")
+    def to_kr(s: str) -> str:
+        key = _norm_token(s); m = CODE.fullmatch(key)
+        if not m: return str(s)
+        year, _rg, lvl, kind = m.group(1), m.group(2), m.group(3), m.group(4)
+        if lvl=="PRESIDENT": return f"{year} 대선"
+        if lvl=="NA"  and kind=="PRO": return f"{year} 총선 비례"
+        if lvl=="LOC" and kind=="PRO": return f"{year} 광역 비례"
+        if lvl=="LOC" and kind=="GOV": return f"{year} 광역단체장"
         return s
 
-    CODE_RE = re.compile(r"^(20\d{2})(?:_([SG]))?_(NA|LOC|PRESIDENT)(?:_(PRO|GOV))?$")
-    KR_REGION_RE = re.compile(r"^(20\d{2})\s+(서울|경기)\s+(.*)$")
-
-    def to_kr_label(raw: str) -> str:
-        s = str(raw)
-        key = _norm_token(s)
-        m = CODE_RE.fullmatch(key)
-        if m:
-            year, region_tag, lvl, kind = m.group(1), m.group(2), m.group(3), m.group(4)
-            region_txt = f" {region_tag} " if region_tag else " "
-            if lvl == "PRESIDENT": return f"{year}{region_txt}대선".strip()
-            if lvl == "NA" and (kind == "PRO"): return f"{year}{region_txt}총선 비례".strip()
-            if lvl == "LOC" and (kind == "PRO"): return f"{year}{region_txt}광역 비례".strip()
-            if lvl == "LOC" and (kind == "GOV"): return f"{year}{region_txt}광역단체장".strip()
-        km = KR_REGION_RE.match(s)
-        if km: return f"{km.group(1)} {km.group(2)} {km.group(3)}"
-        if re.match(r"^\s*20\d{2}", s): return s.strip()
-        return s
-
-    long_df["선거명_표시"] = base_elec.apply(to_kr_label)
+    long_df["선거명_표시"] = base_e.apply(to_kr)
     long_df = long_df.dropna(subset=["선거명_표시","계열","득표율"])
+    long_df["득표율"] = pd.to_numeric(long_df["득표율"], errors="coerce")
+    mask_01 = (long_df["득표율"]<=1.0) & (long_df["득표율"]>=0)
+    if mask_01.any():
+        long_df.loc[mask_01,"득표율"] = long_df.loc[mask_01,"득표율"]*100.0
 
-    # 정렬용 컬럼
-    long_df["연도"] = long_df["선거명_표시"].str.extract(r"^(20\d{2})").astype(int)
-    # 타입(대선/광역 비례/광역단체장) 추출
-    def _etype(s: str) -> str:
+    long_df["연도"] = pd.to_numeric(long_df["선거명_표시"].str.extract(r"^(20\d{2})")[0], errors="coerce").fillna(-1).astype(int)
+    def etype(s:str)->str:
         if "대선" in s: return "대선"
         if "광역 비례" in s: return "광역 비례"
         if "광역단체장" in s: return "광역단체장"
         if "총선 비례" in s: return "총선 비례"
         return "기타"
-    long_df["선거타입"] = long_df["선거명_표시"].map(_etype)
-
-    long_df = long_df.sort_values(["연도","선거타입","선거명_표시","계열"]).drop_duplicates(subset=["선거명_표시","계열","득표율"])
-
-    # 최종 x축 순서 만들기 (2022년만 커스텀)  [REQ-6]
-    order_by_year = []
-    for y in sorted(long_df["연도"].unique()):
-        sub = long_df[long_df["연도"] == y]
-        if y == 2022:
-            preferred = ["대선", "광역 비례", "광역단체장"]
-            for t in preferred:
-                labels = sub[sub["선거타입"] == t]["선거명_표시"].unique().tolist()
-                order_by_year.extend(labels)
-            # 그 외 타입이 있다면 뒤에
-            others = sub[~sub["선거타입"].isin(preferred)]["선거명_표시"].unique().tolist()
-            order_by_year.extend(others)
-        else:
-            labels = sub["선거명_표시"].unique().tolist()
-            order_by_year.extend(labels)
+    long_df["선거타입"] = long_df["선거명_표시"].map(etype)
+    type_rank = {"대선":1, "광역 비례":2, "광역단체장":3, "총선 비례":4, "기타":9}
+    uniq = long_df[["선거명_표시","연도","선거타입"]].drop_duplicates().copy()
+    uniq["순위"] = uniq["선거타입"].map(type_rank).fillna(9)
+    uniq = uniq.sort_values(["연도","순위","선거명_표시"])
+    order = uniq["선거명_표시"].tolist()
 
     party_order = ["민주","보수","진보","기타"]
-    color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
+    color_map = {"민주":"#152484","보수":"#E61E2B","진보":"#7B2CBF","기타":"#6C757D"}
     present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
-    colors  = [color_map[p] for p in present]
+    colors  = [color_map.get(p, "#6B7280") for p in present]
 
     selector = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
 
@@ -781,6 +747,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
