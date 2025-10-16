@@ -220,7 +220,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame):
 
     # 컬럼 탐색
     code_col = next((c for c in ["코드","지역구코드","선거구코드","지역코드","code","CODE"] if c in df.columns), None)
-    cols = [c for c in ["청년층","중년층","고령층"] if c in df.columns]
+    cols = [c for c in ["청년층(18~39세)","중년층(40~59세)","고령층(65세 이상)"] if c in df.columns]
     if len(cols) < 3:
         st.error("population.csv에서 '청년층', '중년층', '고령층' 3개 컬럼을 모두 찾지 못했습니다.")
         return
@@ -788,6 +788,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
