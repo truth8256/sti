@@ -118,38 +118,46 @@ def render_population_box(pop_df: pd.DataFrame):
 
         mobility_rate = floating_pop / total_voters if total_voters > 0 else float("nan")
 
-        c1 = st.columns([1])
-        with c1:
-            st.markdown("**전체 유권자 수**")
-            st.markdown(f"{int(round(total_voters)):,}명")
-            st.markdown("**유동인구**")
-            st.markdown(f"{int(round(floating_pop)):,}명")
-            if mobility_rate == mobility_rate:
-                bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
-                x_max = max(0.3, float(mobility_rate) * 1.3)
-                chart = (
-                    alt.Chart(bar_df)
-                    .mark_bar()
-                    .encode(
-                        x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0, x_max])),
-                        y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
-                        tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
-                    )
-                    .properties(height=80)
+        # ── 여기부터 '한 열(세로)' 배치 ─────────────────────────────
+        st.markdown("**전체 유권자 수**")
+        st.markdown(f"<div style='font-weight:800;font-size:1.15rem;color:#111827;'>"
+                    f"{int(round(total_voters)):,}명</div>", unsafe_allow_html=True)
+
+        st.markdown("**유동인구**")
+        st.markdown(f"<div style='font-weight:800;font-size:1.15rem;color:#111827;'>"
+                    f"{int(round(floating_pop)):,}명</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+
+        if mobility_rate == mobility_rate:
+            bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
+            x_max = max(0.3, float(mobility_rate) * 1.3)
+            chart = (
+                alt.Chart(bar_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("값:Q",
+                            axis=alt.Axis(title=None, format=".0%"),
+                            scale=alt.Scale(domain=[0, x_max])),
+                    y=alt.Y("항목:N",
+                            axis=alt.Axis(title=None, labels=False, ticks=False)),
+                    tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
                 )
-                text = (
-                    alt.Chart(bar_df)
-                    .mark_text(align="left", dx=4)
-                    .encode(
-                        x=alt.X("값:Q", scale=alt.Scale(domain=[0, x_max])),
-                        y=alt.Y("항목:N"),
-                        text=alt.Text("값:Q", format=".1%")
-                    )
+                .properties(height=80)
+            )
+            text = (
+                alt.Chart(bar_df)
+                .mark_text(align="left", dx=4)
+                .encode(
+                    x=alt.X("값:Q", scale=alt.Scale(domain=[0, x_max])),
+                    y=alt.Y("항목:N"),
+                    text=alt.Text("값:Q", format=".1%")
                 )
-                st.altair_chart(chart + text, use_container_width=True)
-                st.caption("유동비율 = (전입 + 전출) ÷ 전체 유권자 (동일 기간 기준)")
-            else:
-                st.info("유동비율을 계산할 수 없습니다.")
+            )
+            st.altair_chart(chart + text, use_container_width=True)
+            st.caption("유동비율 = (전입 + 전출) ÷ 전체 유권자 (동일 기간 기준)")
+        else:
+            st.info("유동비율을 계산할 수 없습니다.")
 
 # ---------- 연령 구성(도넛) ----------
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280, width_px: int = 360):
@@ -157,7 +165,6 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
     청년/중년/고령 3조각 모두 표시 + 선택 항목만 검은 테두리로 강조하는 반원(half-donut) 차트
     - 범례 제거
     - 중앙에 큰 숫자(%) + 라벨
-    - '전체' 옵션/60~64 계산 없음
     """
     import math
     import pandas as pd
@@ -220,10 +227,9 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 
     base = alt.Chart(df_vis).properties(width=width, height=height)
 
-    # 공통 theta 설정(반원: -π/2 ~ π/2)
+    # 반원: -π/2 ~ π/2
     theta_enc = alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi/2, math.pi/2]))
 
-    # 본문 아크
     arcs_main = (
         base
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
@@ -238,7 +244,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         )
     )
 
-    # 하이라이트(검은 테두리) — 본문과 동일한 theta/반경을 반드시 사용해야 위치가 정확히 겹침
+    # 본문과 동일 theta/반경을 사용해 정확히 겹치도록
     arcs_highlight = (
         base
         .transform_filter(alt.datum.연령 == focus)
@@ -262,7 +268,6 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 
     st.altair_chart(arcs_main + arcs_highlight + center_big + center_small, use_container_width=False)
 
-
 # ---------- 성비(연령대×성별 가로 막대) ----------
 def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 380):
     import numpy as np
@@ -273,7 +278,6 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 380):
 
     df = _norm_cols(pop_df.copy())
 
-    # 원본 컬럼명(데이터)은 그대로, 화면 라벨만 바꿔서 표시
     age_buckets = ["20대", "30대", "40대", "50대", "60대", "70대 이상"]
     col_pairs = [(f"{a} 남성", f"{a} 여성") for a in age_buckets]
     expect_cols = [c for pair in col_pairs for c in pair]
@@ -294,7 +298,6 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 380):
         except:
             return 0.0
 
-    # 숫자화 후 전체(동→구 합산 가정) 합계 집계
     df_num = df[expect_cols].applymap(_to_num).fillna(0.0)
     sums = df_num.sum(axis=0)
 
@@ -302,7 +305,6 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 380):
         st.info("성비 데이터(연령×성별)가 모두 0입니다.")
         return
 
-    # tidy 구성: 연령대 내부 100% 기준 비율(0~1)을 미리 계산
     tidy_rows = []
     for a in age_buckets:
         m_col, f_col = f"{a} 남성", f"{a} 여성"
@@ -319,14 +321,12 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 380):
 
     tidy = pd.DataFrame(tidy_rows)
 
-    # 표시 라벨: 20대 → 18–29세
     age_label_map = {"20대": "18–29세", "30대": "30대", "40대": "40대", "50대": "50대", "60대": "60대", "70대 이상": "70대 이상"}
     tidy["연령대표시"] = tidy["연령대"].map(age_label_map)
 
     color_domain = ["남성", "여성"]
     color_range = ["#3B82F6", "#EF4444"]
 
-    # 항목 간 간격을 충분히: 항목당 픽셀 × 개수 기반 동적 높이
     n_items = tidy["연령대표시"].nunique()
     per_item_px = 56
     height_px = max(box_height_px, n_items * per_item_px + 40)
@@ -341,7 +341,6 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 380):
                 title=None,
                 axis=alt.Axis(labelLimit=160)
             ),
-            # 100% 스택: 비율(0~1) + normalize
             x=alt.X(
                 "비율:Q",
                 stack="normalize",
@@ -728,18 +727,18 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
     st.markdown("### 👥 인구 정보")
 
     # 바깥 비율: 첫 박스(유동·전체) 좁게, 오른쪽(연령·성비) 넓게
-    left_col, right_col = st.columns([1, 5])
+    left_col, right_col = st.columns([1,5])
 
     with left_col:
         render_population_box(df_pop)
 
     with right_col:
         # 오른쪽 내부: 성비를 더 넓게
-        subcol_age, subcol_sex = st.columns([1.5, 3.5])
+        subcol_age, subcol_sex = st.columns([1.5, 2.5])
         with subcol_age.container(border=True):
             st.markdown("**연령 구성**")
             render_age_highlight_chart(df_pop, box_height_px=320)
-        with subcol_sex.container(border=True, height="stretch"):
+        with subcol_sex.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
             render_sex_ratio_bar(df_pop, box_height_px=320)
 
@@ -754,17 +753,3 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
