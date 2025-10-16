@@ -809,9 +809,9 @@ def render_region_detail_layout(
     
     with top_right:
         subcol1, subcol2 = st.columns(2)
-        with subcol1.container(border=True, height="stretch"):
+        with subcol1.container(border=True):
             st.markdown("#### 연령 구성")
-            render_age_highlight_chart(df_pop)
+            render_age_highlight_chart(df_pop, box_height_px=320)
         with subcol2.container(border=True, height="stretch"):
             st.markdown("#### 성비")
             st.info("가로 막대차트 자리")
@@ -829,16 +829,4 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
-
-
-
-
-
-
-
-
-
-
-
-
 
