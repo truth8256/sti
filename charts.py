@@ -245,36 +245,50 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
 
     code_col = next((c for c in CODE_CANDIDATES if c in df.columns), None)
 
-    # --- 같은 지역구끼리 합산 ---
-    use_cols = [Y_COL, M_COL, O_COL, total_col]
-    if code_col:
-        row = df.groupby(code_col, dropna=False)[use_cols].sum(min_count=1).iloc[0]
-    else:
-        row = df[use_cols].sum(numeric_only=True)
+    # --- 같은 지역구끼리 합산 (안전 버전: 숫자 변환 + 0 채움 + 전체 합) ---
+    Y_COL = "청년층(18~39세)"
+    M_COL = "중년층(40~59세)"
+    O_COL = "고령층(65세 이상)"
+    TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
+    CODE_CANDIDATES  = ["지역구코드","선거구코드","코드","code","CODE"]
 
-    def to_num(x):
-        if pd.isna(x): return np.nan
-        if isinstance(x, (int,float)): return float(x)
-        try: return float(str(x).replace(",","").strip())
-        except: return np.nan
+    for c in (Y_COL, M_COL, O_COL):
+        if c not in df.columns:
+            st.error(f"필수 컬럼이 없습니다: {c}")
+            return
 
-    y = to_num(row[Y_COL]); m = to_num(row[M_COL]); o = to_num(row[O_COL])
-    total_v = to_num(row[total_col])
-
-    if not all(isinstance(v,(int,float)) for v in [y,m,o,total_v]) or total_v is np.nan or total_v <= 0:
-        st.info("전체 유권자 수(분모)가 0이거나 없습니다.")
+    total_col = next((c for c in TOTAL_CANDIDATES if c in df.columns), None)
+    if total_col is None:
+        st.error("분모가 될 '전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # 60~64 계산 (음수 방지)
-    a6064 = max(total_v - sum(v for v in [y,m,o] if v==v), 0.0)
+    # ① 숫자화: 쉼표/공백 제거 → numeric 강제 → NaN은 0
+    cols_num = [Y_COL, M_COL, O_COL, total_col]
+    for c in cols_num:
+        df[c] = (
+            pd.to_numeric(
+                df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
+                errors="coerce"
+            ).fillna(0)
+        )
+
+    y = float(df[Y_COL].sum())
+    m = float(df[M_COL].sum())
+    o = float(df[O_COL].sum())
+    total_v = float(df[total_col].sum())
+
+    if total_v <= 0:
+        st.info("전체 유권자 수(분모)가 0입니다.")
+        return
+
+    # ③ 60~64 = 전체 − (청년+중년+고령), 반올림 오차 보정 및 클리핑
+    a6064 = total_v - (y + m + o)
+    # 소수점 오차 보정(±0.5명 허용), 범위 클리핑
+    if abs(a6064) <= 0.5:
+        a6064 = 0.0
+    a6064 = max(0.0, min(a6064, total_v))
+
     denom = total_v
-
-    labels_main = ["청년층(18~39세)","중년층(40~59세)","고령층(65세 이상)"]
-    vals_main   = [y, m, o]
-
-    labels_all  = labels_main + ["60~64세"]
-    vals_all    = vals_main + [a6064]
-    ratios_all  = [(v/denom*100.0 if isinstance(v,(int,float)) and denom>0 else 0.0) for v in vals_all]
 
     # --- 라디오(강조) — Altair selection 대신 Streamlit 사용 ---
     _col1, _col2 = st.columns([1, 1])
@@ -856,6 +870,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
