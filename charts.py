@@ -153,11 +153,7 @@ def render_population_box(pop_df: pd.DataFrame):
                 st.info("유동비율을 계산할 수 없습니다.")
 
 # ---------- 연령 구성(도넛) ----------
-def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320, width_px: int = 260):
-    """
-    청년/중년/고령 세 조각을 모두 표시하되, 선택된 연령층만 강조하는 도넛 차트.
-    가운데에는 선택한 층의 비율과 인원수를 표시.
-    """
+def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280, width_px: int = 360):
     import numpy as np
     import altair as alt
 
@@ -178,6 +174,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
+    # 숫자화 및 합계(동 → 구)
     for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
@@ -190,7 +187,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         st.info("전체 유권자 수(분모)가 0입니다.")
         return
 
-    labels = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
+    labels = [Y_COL, M_COL, O_COL]
     values = [y, m, o]
     ratios = [v / total_v * 100.0 for v in values]
 
@@ -203,48 +200,58 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         "투명도": [1.0 if l == focus else 0.35 for l in labels]
     })
 
-    width, height = max(220, int(width_px)), max(200, int(box_height_px) - 56)
-    cx, cy = width / 2, height / 2
+    width  = max(320, int(width_px))
+    height = max(220, int(box_height_px))
+    inner_r = 70
+    outer_r = 110
+    PI = 3.141592653589793
 
     color_map = {
-        "청년층(18~39세)": "#4D8EFF",
-        "중년층(40~59세)": "#1E6BFF",
-        "고령층(65세 이상)": "#334155",
+        Y_COL: "#4D8EFF",
+        M_COL: "#1E6BFF",
+        O_COL: "#334155",
     }
-
     color_domain = labels
-    color_range = [color_map[k] for k in color_domain]
+    color_range  = [color_map[k] for k in color_domain]
 
     base = alt.Chart(df_vis).properties(width=width, height=height)
+
     arcs = (
-        base.mark_arc(innerRadius=70, outerRadius=110, cornerRadius=6, stroke="white", strokeWidth=1)
+        base
+        .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6,
+                  stroke="white", strokeWidth=1,
+                  startAngle=-PI, endAngle=0)  # 반원
         .encode(
             theta=alt.Theta("비율:Q"),
-            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range),
-                            legend=alt.Legend(title=None, orient="top")),
+            color=alt.Color("연령:N",
+                            scale=alt.Scale(domain=color_domain, range=color_range),
+                            legend=None),              # ✅ 범례 제거
             opacity=alt.Opacity("투명도:Q", scale=None),
             tooltip=[
                 alt.Tooltip("연령:N"),
                 alt.Tooltip("명:Q", format=",.0f"),
-                alt.Tooltip("비율:Q", format=".1f", title="비율(%)")
+                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
             ],
         )
     )
 
-    # 가운데 표시
     idx = labels.index(focus)
     big_txt = f"{ratios[idx]:.1f}%"
-    small_txt = f"{int(values[idx]):,}명"
+    cx = width / 2
+    cy = height * 0.65
 
-    center_big = alt.Chart(pd.DataFrame({"x": [0]})).mark_text(
-        fontSize=20, fontWeight="bold", color="#0f172a"
-    ).encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big_txt))
+    center_big = (
+        alt.Chart(pd.DataFrame({"x":[0]}))
+        .mark_text(fontSize=36, fontWeight="bold", color="#0f172a")  # ✅ 크게
+        .encode(x=alt.value(cx), y=alt.value(cy), text=alt.value(big_txt))
+    )
+    center_small = (
+        alt.Chart(pd.DataFrame({"x":[0]}))
+        .mark_text(fontSize=12, color="#475569")
+        .encode(x=alt.value(cx), y=alt.value(cy + 20), text=alt.value(focus))
+    )
 
-    center_small = alt.Chart(pd.DataFrame({"x": [0]})).mark_text(
-        fontSize=12, color="#475569"
-    ).encode(x=alt.value(cx), y=alt.value(cy + 14), text=alt.value(small_txt))
-
-    st.altair_chart(arcs + center_big + center_small, use_container_width=True)
+    st.altair_chart(arcs + center_big + center_small, use_container_width=False)
 
 # ---------- 성비(연령대×성별 가로 막대) ----------
 def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
@@ -702,6 +709,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
