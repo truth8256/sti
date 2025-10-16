@@ -331,7 +331,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
             ],
             order=alt.Order("성별", sort="ascending")
         )
-        .properties(height=max(180, box_height_px - 60))
+        .properties(height=max(190, box_height_px - 60))
     )
 
     st.altair_chart(chart, use_container_width=True)
@@ -724,5 +724,6 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
