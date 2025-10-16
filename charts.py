@@ -208,82 +208,81 @@ def render_population_box(pop_df: pd.DataFrame):
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240, width_px: int = 300):
     df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df is None or df.empty:
-        st.info("연령 구성 데이터가 없습니다.")
-        return
+        st.info("연령 구성 데이터가 없습니다."); return
 
     Y, M, O = "청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"
-    T_CANDS = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
+    T_CANDS = ["전체 유권자 수","전체 유권자","전체유권자","total_voters"]
 
+    # 필수 컬럼 체크
     for c in (Y, M, O):
         if c not in df.columns:
-            st.info(f"연령대 컬럼이 없습니다: {c}")
-            return
+            st.info(f"연령대 컬럼이 없습니다: {c}"); return
     total_col = next((c for c in T_CANDS if c in df.columns), None)
     if total_col is None:
-        st.info("'전체 유권자 수' 컬럼이 없습니다.")
-        return
+        st.info("'전체 유권자 수' 컬럼이 없습니다."); return
 
     # 숫자화
     for c in [Y, M, O, total_col]:
-        df[c] = pd.to_numeric(
-            df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
-            errors="coerce",
-        ).fillna(0)
+        df[c] = pd.to_numeric(df[c].astype(str).str.replace(",","",regex=False).str.strip(),
+                              errors="coerce").fillna(0)
 
     y, m, o = float(df[Y].sum()), float(df[M].sum()), float(df[O].sum())
     tot = float(df[total_col].sum())
     if tot <= 0:
-        st.info("전체 유권자 수(분모)가 0입니다.")
-        return
+        st.info("전체 유권자 수(분모)가 0입니다."); return
 
     labels, values = [Y, M, O], [y, m, o]
-    ratios01 = [v / tot for v in values]
-    ratios100 = [r * 100 for r in ratios01]
+    ratios01  = [v/tot for v in values]
+    ratios100 = [r*100 for r in ratios01]
 
-    # 상단에서 라디오(포커스) 먼저 생성 → 즉시 재렌더 안전
+    # 포커스(라디오) — 차트보다 위
     focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
 
-    width = max(260, int(width_px))
+    # 캔버스/레이아웃 값
+    width  = max(260, int(width_px))
     height = max(220, int(box_height_px))
     inner_r, outer_r = 68, 106
-    cx = width / 2
-    cy = height * 0.48
+    cx = width/2; cy = height*0.48
 
-    df_vis = pd.DataFrame({"연령": labels, "명": values, "비율": ratios01, "표시비율": ratios100})
+    # 시각화용 DF (중앙 텍스트용 라벨, ex: '34.5%')
+    df_vis = pd.DataFrame({
+        "연령": labels,
+        "명": values,
+        "비율": ratios01,
+        "표시비율": ratios100,
+        "라벨": [f"{v:.1f}%" for v in ratios100],
+    })
 
-    base = (
-        alt.Chart(df_vis)
-        .properties(width=width, height=height, padding={"top": 0, "left": 0, "right": 0, "bottom": 0})
-    )
-    theta = alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi / 2, math.pi / 2]))
+    # 같은 base(같은 데이터/스펙)를 모든 레이어가 공유하도록 구성 → Altair v5 TypeError 차단
+    base = alt.Chart(df_vis).properties(width=width, height=height,
+                                       padding={"top":0,"left":0,"right":0,"bottom":0})
 
-    arcs = (
-        base.mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
-        .encode(
-            theta=theta,
-            color=alt.condition(alt.datum.연령 == focus, alt.value(COLOR_BLUE), alt.value("#E5E7EB")),
-            tooltip=[
-                alt.Tooltip("연령:N", title="연령대"),
-                alt.Tooltip("명:Q", title="인원", format=",.0f"),
-                alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f"),
-            ],
-        )
-    )
+    theta = alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi/2, math.pi/2]))
 
-    # 중앙 텍스트
-    idx = labels.index(focus)
-    big = (
-        alt.Chart(pd.DataFrame({"_": [0]}))
-        .mark_text(fontSize=34, fontWeight="bold", color="#0f172a")
-        .encode(x=alt.value(cx), y=alt.value(cy - 2), text=alt.value(f"{df_vis.loc[idx, '표시비율']:.1f}%"))
-    )
-    small = (
-        alt.Chart(pd.DataFrame({"_": [0]}))
-        .mark_text(fontSize=12, color="#475569")
-        .encode(x=alt.value(cx), y=alt.value(cy + 18), text=alt.value(focus))
+    arcs = base.mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6,
+                         stroke="white", strokeWidth=1).encode(
+        theta=theta,
+        color=alt.condition(alt.datum.연령==focus, alt.value(COLOR_BLUE), alt.value("#E5E7EB")),
+        tooltip=[
+            alt.Tooltip("연령:N", title="연령대"),
+            alt.Tooltip("명:Q",   title="인원", format=",.0f"),
+            alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f"),
+        ],
     )
 
-    st.altair_chart(arcs + big + small, use_container_width=False, theme=None)
+    # ✅ 중앙 텍스트도 같은 base에서 transform_filter로 선택행만 남겨서 표시 (별도 DF 사용 안 함)
+    center_row = base.transform_filter(alt.datum.연령 == focus)
+
+    center_big = center_row.mark_text(fontSize=34, fontWeight="bold", color="#0f172a").encode(
+        x=alt.value(cx), y=alt.value(cy-2), text=alt.Text("라벨:N")
+    )
+    center_small = center_row.mark_text(fontSize=12, color="#475569").encode(
+        x=alt.value(cx), y=alt.value(cy+18), text=alt.Text("연령:N")
+    )
+
+    # 같은 base에서 파생된 3개 레이어만 합침 → 유효성 검사 통과
+    chart = arcs + center_big + center_small
+    st.altair_chart(chart, use_container_width=False, theme=None)
 
 # =============================
 # 성비 (연령×성별 가로막대)
@@ -863,4 +862,5 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
