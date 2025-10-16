@@ -118,7 +118,7 @@ def render_population_box(pop_df: pd.DataFrame):
 
         mobility_rate = floating_pop / total_voters if total_voters > 0 else float("nan")
 
-        c1, c2 = st.columns([1, 2.0])  # 첫 박스 자체 폭도 줄였으므로 내부 비율도 살짝 보수적으로
+        c1, c2 = st.columns([1, 1.4])
         with c1:
             st.markdown("**전체 유권자 수**")
             st.markdown(f"{int(round(total_voters)):,}명")
@@ -710,19 +710,19 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
     st.markdown("### 👥 인구 정보")
 
     # 바깥 비율: 첫 박스(유동·전체) 좁게, 오른쪽(연령·성비) 넓게
-    left_col, right_col = st.columns([1.05, 2.25])
+    left_col, right_col = st.columns([1, 3])
 
     with left_col:
         render_population_box(df_pop)
 
     with right_col:
         # 오른쪽 내부: 성비를 더 넓게
-        subcol_age, subcol_sex = st.columns([1, 1.5])
+        subcol_age, subcol_sex = st.columns([1, 2])
         with subcol_age.container(border=True):
-            st.markdown("#### 연령 구성")
+            st.markdown("**연령 구성**")
             render_age_highlight_chart(df_pop, box_height_px=320)
         with subcol_sex.container(border=True, height="stretch"):
-            st.markdown("#### 성비")
+            st.markdown("**성비**")
             render_sex_ratio_bar(df_pop, box_height_px=320)
 
     st.markdown("### 📈 정당성향별 득표추이")
@@ -736,3 +736,4 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
