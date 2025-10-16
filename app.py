@@ -20,10 +20,14 @@ from metrics import (
     compute_24_gap,
 )
 
-# 옵션 B: 레이아웃 함수만 불러오면 됩니다
 from charts import (
-    render_region_detail_layout,
+    render_population_box,
+    render_vote_trend_chart,
+    render_results_2024_card,
+    render_incumbent_card,
+    render_prg_party_box,
 )
+
 
 # -----------------------------
 # Page Config
