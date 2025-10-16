@@ -109,11 +109,9 @@ def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[
 
 # 인구 정보
 
+# 인구 정보 (population.csv 집계 + 총유권자 카드 + 유동인구 누적 막대)
 def render_population_box(pop_df: pd.DataFrame):
     import numpy as np
-    import altair as alt
-    import pandas as pd
-    import streamlit as st
 
     with st.container(border=True):
         st.markdown("**인구 정보**")
@@ -122,74 +120,49 @@ def render_population_box(pop_df: pd.DataFrame):
             st.info("유동인구/연령/성비 차트를 위한 데이터가 없습니다.")
             return
 
-        # ---- 1) 컬럼 정규화(개행/공백 제거) & 숫자 변환 유틸
+        # 컬럼 정규화
         df = pop_df.copy()
         df.columns = [str(c).strip().replace("\n", "").replace("\r", "") for c in df.columns]
 
-        def _to_num(s):
-            if pd.isna(s):
-                return np.nan
-            if isinstance(s, (int, float, np.integer, np.floating)):
-                return float(s)
-            txt = str(s).strip().replace(",", "")
-            try:
-                return float(txt)
-            except Exception:
-                return np.nan
+        # 컬럼명 매핑 (질문에서 준 헤더 기준)
+        code_col = next((c for c in ["지역구코드","선거구코드","코드","code","CODE"] if c in df.columns), None)
+        total_col = next((c for c in ["전체 유권자","전체유권자","total_voters"] if c in df.columns), None)
+        float_col = next((c for c in ["유동인구","유권자 이동","floating","mobility"] if c in df.columns), None)
 
-        # ---- 2) 동 단위 → 구(선거구) 단위 합계
-        # 코드 컬럼 후보(이미 app.py에서 선택지역으로 필터되어 들어오는 경우가 많지만,
-        # 다중 동이 남아있을 수 있으니 합계 처리)
-        code_col = None
-        for c in ["코드", "지역구코드", "선거구코드", "지역코드", "code", "CODE"]:
-            if c in df.columns:
-                code_col = c
-                break
-
-        # 집계에 필요한 주요 수치 컬럼 이름(헤더 명시 반영)
-        TOTAL_COL = next((c for c in ["전체 유권자", "전체유권자", "total_voters"] if c in df.columns), None)
-        FLOW_COL  = next((c for c in ["유동인구", "유권자 이동", "floating", "mobility"] if c in df.columns), None)
-
-        if TOTAL_COL is None or FLOW_COL is None:
-            st.error("population.csv에서 '전체 유권자' 또는 '유동인구' 컬럼을 찾지 못했습니다. 헤더를 확인해 주세요.")
+        if not total_col or not float_col:
+            st.error("population.csv에서 '전체 유권자' 또는 '유동인구' 컬럼을 찾지 못했습니다.")
             return
 
         # 숫자화
-        df[TOTAL_COL] = df[TOTAL_COL].apply(_to_num)
-        df[FLOW_COL]  = df[FLOW_COL].apply(_to_num)
+        def _to_num(x):
+            if pd.isna(x): return np.nan
+            if isinstance(x, (int, float)): return float(x)
+            s = str(x).strip().replace(",", "")
+            try: return float(s)
+            except: return np.nan
 
-        # 선택 코드만 들어온 경우에도 안전하게 합계
+        df[total_col] = df[total_col].apply(_to_num)
+        df[float_col] = df[float_col].apply(_to_num)
+
+        # 동→구 합계 (같은 지역구코드끼리 합)
         if code_col:
-            agg = (
-                df.groupby(code_col, dropna=False)[[TOTAL_COL, FLOW_COL]]
-                  .sum(min_count=1)
-                  .reset_index(drop=False)
-            )
-            # 한 코드만 있으면 그 한 줄로 축약
-            if len(agg) >= 1:
-                row = agg[[TOTAL_COL, FLOW_COL]].sum(numeric_only=True)  # 혹시 여러 코드가 섞여 온 경우 안전합
-                total_voters = float(row.get(TOTAL_COL, np.nan))
-                floating_pop = float(row.get(FLOW_COL, np.nan))
-            else:
-                total_voters = float(df[TOTAL_COL].sum())
-                floating_pop = float(df[FLOW_COL].sum())
+            agg = df.groupby(code_col, dropna=False)[[total_col, float_col]].sum(min_count=1).reset_index(drop=True)
+            total_voters = float(agg[total_col].sum())
+            floating_pop = float(agg[float_col].sum())
         else:
-            # 코드가 없으면 단순 합
-            total_voters = float(df[TOTAL_COL].sum())
-            floating_pop = float(df[FLOW_COL].sum())
+            total_voters = float(df[total_col].sum())
+            floating_pop = float(df[float_col].sum())
 
-        # 방어적 보정
         if np.isnan(total_voters) and np.isnan(floating_pop):
             st.info("표시할 합계 수치가 없습니다.")
             return
+
         total_voters = 0.0 if np.isnan(total_voters) else total_voters
         floating_pop = 0.0 if np.isnan(floating_pop) else floating_pop
-        floating_pop = max(0.0, floating_pop)
-        # 유동인구가 전체를 넘지 않도록 캡
-        floating_pop = min(floating_pop, total_voters)
+        floating_pop = max(0.0, min(floating_pop, total_voters))
         others = max(0.0, total_voters - floating_pop)
 
-        # ---- 3) 레이아웃: 좌측 ‘전체 유권자 수’ 카드, 우측 ‘유동인구’ 누적 막대
+        # 좌: 전체 유권자 수 카드 / 우: 유동인구 누적 단일 막대
         c1, c2 = st.columns([1, 3])
 
         with c1:
@@ -197,54 +170,21 @@ def render_population_box(pop_df: pd.DataFrame):
 
         with c2:
             st.caption("유동인구 (전체 유권자 대비)")
-            bar_df = pd.DataFrame(
-                {
-                    "구성": ["유동인구", "그 외"],
-                    "값":   [floating_pop, others],
-                }
-            )
-
-            # 단일 막대(누적) 표현을 위해 x는 상수 카테고리 사용
-            bar_df["x"] = "전체 유권자"
-
+            bar_df = pd.DataFrame({"구성": ["유동인구","그 외"], "값": [floating_pop, others], "x": ["전체 유권자","전체 유권자"]})
             chart = (
                 alt.Chart(bar_df)
                 .mark_bar()
                 .encode(
                     x=alt.X("x:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
                     y=alt.Y("값:Q", stack="zero", axis=alt.Axis(title=None)),
-                    color=alt.Color(
-                        "구성:N",
-                        scale=alt.Scale(
-                            # 유동인구만 다른 색(눈에 잘 띄도록 순서 고정)
-                            domain=["유동인구", "그 외"],
-                            range=["#7C83FD", "#D6DAF8"],  # 보라 계열(요청 반영 대비)
-                        ),
-                        legend=alt.Legend(orient="right", title=None),
-                    ),
-                    tooltip=[
-                        alt.Tooltip("구성:N"),
-                        alt.Tooltip("값:Q", format=","),
-                    ],
+                    color=alt.Color("구성:N",
+                        scale=alt.Scale(domain=["유동인구","그 외"], range=["#7C83FD","#D6DAF8"]),
+                        legend=alt.Legend(title=None, orient="right")),
+                    tooltip=[alt.Tooltip("구성:N"), alt.Tooltip("값:Q", format=",")]
                 )
                 .properties(height=160)
             )
-
-            # 상단 라벨(총합) 텍스트
-            total_label = (
-                alt.Chart(pd.DataFrame({"x": ["전체 유권자"], "총합": [total_voters]}))
-                .mark_text(dy=-8)
-                .encode(
-                    x="x:N",
-                    y=alt.value(0),
-                    text=alt.Text("총합:Q", format=",.0f"),
-                )
-            )
-
-            st.altair_chart(chart + total_label, use_container_width=True)
-
-        # (다음 단계용 자리 표시 – 연령/성비 그래프 추후 연결)
-        st.caption("※ ‘유권자 이동’ → ‘유동인구’로 용어 변경 완료. 연령 구성/성비 그래프는 다음 단계에서 연결 예정.")
+            st.altair_chart(chart, use_container_width=True)
 
 
 
@@ -709,13 +649,13 @@ top_left, top_right = st.columns(2)
 
 with top_left:
     render_population_box(df_pop)
-    
+
 with top_right:
     subcol1, subcol2 = st.columns(2)
-    with subcol1.container(border=True):
+    with subcol1.container(border=True, height="stretch"):
         st.markdown("#### 연령 구성")
         st.info("파이차트 자리")
-    with subcol2.container(border=True):
+    with subcol2.container(border=True, height="stretch"):
         st.markdown("#### 성비")
         st.info("가로 막대차트 자리")
 
@@ -732,44 +672,4 @@ with top_right:
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
