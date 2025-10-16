@@ -350,152 +350,131 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
 # =============================
 def render_vote_trend_chart(ts: pd.DataFrame):
     """
-    [REQ-6] 같은 연도 내: 대선(1) → 광역 비례(2) → 광역단체장(3) → 총선 비례(4) → 기타(9)
+    정렬 규칙(요청):
+      ... → 2020 총선 비례 → 2022 대선 → 2022 광역 비례 → 2022 광역단체장 → ...
     """
     if ts is None or ts.empty:
-        st.info("득표 추이 데이터가 없습니다.")
-        return
-
+        st.info("득표 추이 데이터가 없습니다."); return
     df = _norm_cols(ts.copy())
 
-    # ---- 컬럼 자동 탐색 ----
     label_col = next((c for c in ["계열","성향","정당성향","party_label","label"] if c in df.columns), None)
     value_col = next((c for c in ["득표율","비율","share","ratio","pct","prop"] if c in df.columns), None)
-    wide_cols = [c for c in ["민주","보수","진보","기타"] if c in df.columns]
-    id_col    = next((c for c in ["선거명","election","분류","연도","year"] if c in df.columns), None)
-    year_col  = next((c for c in ["연도","year"] if c in df.columns), None)
+    wide_cols  = [c for c in ["민주","보수","진보","기타"] if c in df.columns]
 
-    # ---- Long 형태로 정규화 ----
+    id_col  = next((c for c in ["선거명","election","분류","연도","year"] if c in df.columns), None)
+    year_col = next((c for c in ["연도","year"] if c in df.columns), None)
+
     if wide_cols:
-        if not id_col:
-            st.info("선거명을 식별할 컬럼이 필요합니다.")
-            return
+        if not id_col: st.warning("선거명을 식별할 컬럼이 필요합니다."); return
         long_df = df.melt(id_vars=id_col, value_vars=wide_cols, var_name="계열", value_name="득표율")
         base_e = long_df[id_col].astype(str)
     else:
-        if not (label_col and value_col):
-            st.info("정당 성향(계열)과 득표율 컬럼이 필요합니다.")
-            return
-        long_df = df.rename(columns={label_col: "계열", value_col: "득표율"}).copy()
-        if id_col:
-            base_e = long_df[id_col].astype(str)
-        elif year_col:
-            base_e = long_df[year_col].astype(str)
-        else:
-            st.info("선거명을 식별할 컬럼이 필요합니다.")
-            return
+        if not (label_col and value_col): st.warning("정당 성향(계열)과 득표율 컬럼이 필요합니다."); return
+        long_df = df.rename(columns={label_col:"계열", value_col:"득표율"}).copy()
+        if id_col: base_e = long_df[id_col].astype(str)
+        elif year_col: base_e = long_df[year_col].astype(str)
+        else: st.warning("선거명을 식별할 컬럼이 필요합니다."); return
 
-    # ---- 선거명 한글 표기 변환 ----
-    import re
+    # 코드 → 한글 라벨
     def _norm_token(s: str) -> str:
-        s = str(s).strip().replace("-", "_").replace(" ", "_").upper()
-        return re.sub(r"_+", "_", s)
-
+        s = str(s).strip().replace("-","_").replace(" ","_").upper()
+        return re.sub(r"_+","_", s)
     CODE = re.compile(r"^(20\d{2})(?:_([SG]))?_(NA|LOC|PRESIDENT)(?:_(PRO|GOV))?$")
     def to_kr(s: str) -> str:
         key = _norm_token(s)
         m = CODE.fullmatch(key)
-        if not m:
-            return str(s)
+        if not m: return str(s)
         year, _rg, lvl, kind = m.group(1), m.group(2), m.group(3), m.group(4)
-        if lvl == "PRESIDENT":
-            return f"{year} 대선"
-        if lvl == "NA" and kind == "PRO":
-            return f"{year} 총선 비례"
-        if lvl == "LOC" and kind == "PRO":
-            return f"{year} 광역 비례"
-        if lvl == "LOC" and kind == "GOV":
-            return f"{year} 광역단체장"
+        if lvl=="PRESIDENT": return f"{year} 대선"
+        if lvl=="NA"  and kind=="PRO": return f"{year} 총선 비례"
+        if lvl=="LOC" and kind=="PRO": return f"{year} 광역 비례"
+        if lvl=="LOC" and kind=="GOV": return f"{year} 광역단체장"
         return s
-
     long_df["선거명_표시"] = base_e.apply(to_kr)
+    long_df = long_df.dropna(subset=["선거명_표시","계열","득표율"])
 
-    # ---- 수치 정리 (있는 그대로 사용: 0~1도 그대로) ----
-    long_df = long_df.dropna(subset=["선거명_표시", "계열", "득표율"])
-    long_df["득표율"] = pd.to_numeric(long_df["득표율"], errors="coerce")
-    long_df = long_df.dropna(subset=["득표율"])
-
-    # ---- 연도/타입 파생 & 정렬 순서 계산 ----
-    long_df["연도"] = (
-        pd.to_numeric(long_df["선거명_표시"].str.extract(r"^(20\d{2})")[0], errors="coerce")
-        .fillna(-1).astype(int)
-    )
-
+    # 정렬용 연도·타입
+    long_df["연도"] = long_df["선거명_표시"].str.extract(r"^(20\d{2})").astype(int)
     def etype(s: str) -> str:
         if "대선" in s: return "대선"
         if "광역 비례" in s: return "광역 비례"
         if "광역단체장" in s: return "광역단체장"
         if "총선 비례" in s: return "총선 비례"
         return "기타"
-
     long_df["선거타입"] = long_df["선거명_표시"].map(etype)
-    type_rank = {"대선":1, "광역 비례":2, "광역단체장":3, "총선 비례":4, "기타":9}
 
+    type_rank = {"대선":1, "광역 비례":2, "광역단체장":3, "총선 비례":4, "기타":9}
     uniq = long_df[["선거명_표시","연도","선거타입"]].drop_duplicates().copy()
-    uniq["순위"] = uniq["선거타입"].map(type_rank).fillna(9)
+    uniq["순위"] = uniq["선거타입"].map(type_rank)
     uniq = uniq.sort_values(["연도","순위","선거명_표시"])
     order = uniq["선거명_표시"].tolist()
 
-    # ⬇⬇⬇ 핵심: 라인 path 정렬용 x_idx 부여 (x라벨 순서와 동일)
-    order_index = {lbl: i for i, lbl in enumerate(order)}
-    long_df["x_idx"] = long_df["선거명_표시"].map(order_index).astype(int)
-    long_df = long_df.sort_values(["x_idx"])  # (선택) 렌더링 안정화
+    # ---- 커스텀 이동: 2020 총선 비례 다음에 2022 대선 → 2022 광역 비례 → 2022 광역단체장
+    def _first_label(labels, patt):
+        for s in labels:
+            if (hasattr(patt, "search") and patt.search(s)) or (isinstance(patt, str) and patt in s):
+                return s
+        return None
+    def reorder_after(base_list, anchor_pat, targets_in_order):
+        labels = base_list[:]
+        anchor = _first_label(labels, anchor_pat)
+        if not anchor: return labels
+        to_insert = []
+        for t in targets_in_order:
+            lab = _first_label(labels, t)
+            if lab:
+                labels.remove(lab); to_insert.append(lab)
+        idx = labels.index(anchor)
+        for t in reversed(to_insert):
+            labels.insert(idx + 1, t)
+        return labels
+    order = reorder_after(
+        order,
+        re.compile(r"^2020.*총선\s*비례"),
+        [re.compile(r"^2022.*대선"),
+         re.compile(r"^2022.*광역\s*비례"),
+         re.compile(r"^2022.*광역단체장")]
+    )
 
-    # ---- 색상/범례 ----
-    party_order = ["민주", "보수", "진보", "기타"]
-    color_map = {"민주": "#152484", "보수": "#E61E2B", "진보": "#7B2CBF", "기타": "#6C757D"}
+    party_order = ["민주","보수","진보","기타"]
+    color_map = {"민주":"#152484","보수":"#E61E2B","진보":"#7B2CBF","기타":"#6C757D"}
     present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
-    colors = [color_map.get(p, "#6B7280") for p in present]
+    colors  = [color_map[p] for p in present]
 
-    # ---- 인터랙션 ----
-    selector = alt.selection_point(fields=["선거명_표시", "계열"], nearest=True, on="mouseover", empty=False)
+    sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
 
-    line = (
-        alt.Chart(long_df)
-        .mark_line(point=False, strokeWidth=3)
-        .encode(
-            x=alt.X(
-                "선거명_표시:N",
-                sort=order,                # x축 라벨 순서
-                title="선거명",
-                axis=alt.Axis(labelAngle=-35, labelOverlap=False, labelPadding=6, labelLimit=280),
-            ),
-            y=alt.Y("득표율:Q", title="득표율(%)"),
-            color=alt.Color(
-                "계열:N",
-                scale=alt.Scale(domain=present, range=colors),
-                legend=alt.Legend(title=None, orient="top"),
-            ),
-            order=alt.Order("x_idx:Q"),   # ✅ 라인 그리는 순서 강제(꺾임 방지)
+    line = alt.Chart(long_df).mark_line(point=False, strokeWidth=3).encode(
+        x=alt.X("선거명_표시:N", scale=alt.Scale(domain=order),
+                axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
+        y=alt.Y("득표율:Q", title="득표율(%)"),
+        color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors),
+                        legend=alt.Legend(title=None, orient="top"))
+    )
+    hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
+        x="선거명_표시:N", y="득표율:Q", color=alt.Color("계열:N", legend=None)
+    ).add_params(sel)
+    pts = alt.Chart(long_df).mark_circle(size=120).encode(
+        x=alt.X("선거명_표시:N", scale=alt.Scale(domain=order)),
+        y="득표율:Q", color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors), legend=None),
+        opacity=alt.condition(sel, alt.value(1), alt.value(0)),
+        tooltip=[alt.Tooltip("선거명_표시:N", title="선거명"),
+                 alt.Tooltip("계열:N", title="계열"),
+                 alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
+    ).transform_filter(sel)
+
+    # 연도 밴드 (padding 최소화)
+    years = sorted(long_df["연도"].unique().tolist())
+    bands = []
+    for y in years:
+        labels = [l for l in order if re.match(fr"^{y}", l)]
+        if labels: bands.append({"f":labels[0], "t":labels[-1], "연도":y})
+    if bands:
+        bg = alt.Chart(pd.DataFrame(bands)).mark_rect(opacity=0.06).encode(
+            x=alt.X("f:N", scale=alt.Scale(domain=order), title=None), x2="t:N", color=alt.Color("연도:N", legend=None)
         )
-    )
-
-    hit = (
-        alt.Chart(long_df)
-        .mark_circle(size=600, opacity=0)
-        .encode(x="선거명_표시:N", y="득표율:Q", color=alt.Color("계열:N", legend=None))
-        .add_params(selector)
-    )
-
-    points = (
-        alt.Chart(long_df)
-        .mark_circle(size=140)
-        .encode(
-            x="선거명_표시:N",
-            y="득표율:Q",
-            color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors), legend=None),
-            opacity=alt.condition(selector, alt.value(1), alt.value(0)),
-            tooltip=[
-                alt.Tooltip("선거명_표시:N", title="선거명"),
-                alt.Tooltip("계열:N", title="계열"),
-                alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f"),
-            ],
-            order=alt.Order("x_idx:Q"),   # ✅ 포인트도 동일 순서
-        )
-        .transform_filter(selector)
-    )
-
-    chart = (line + hit + points).properties(height=360).interactive()
+        chart = (bg + line + hit + pts).properties(height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}).interactive()
+    else:
+        chart = (line + hit + pts).properties(height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}).interactive()
 
     with st.container(border=True):
         st.altair_chart(chart, use_container_width=True)
@@ -680,212 +659,105 @@ def render_incumbent_card(cur_row: pd.DataFrame | None):
         html_component(html, height=CARD_HEIGHT, scrolling=False)
 
 # =============================
-# 진보당 현황 박스
+# 진보당 현황 (개선 시각화)
 # =============================
-def render_prg_party_box(
-    prg_row: pd.DataFrame | None,
-    pop_row: pd.DataFrame | None = None,
-    *,
-    code: str | int | None = None,
-    region: str | None = None,
-    debug: bool = False
-):
+def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | None = None, *, code: str | int | None = None, region: str | None = None, debug: bool = False):
     """
-    진보당 현황 박스
-    - 지역별(코드/이름) 단일 행 선택 보장
-    - KPI 스타일 개선: 큰 숫자, 보조 라벨
-    - 진보 득표력: 적응형 x축 + 둥근 막대
+    [REQ-9] 대시보드형 요약:
+      - KPI 2개: 진보 득표력, 당원수(있을 때)
+      - 막대 게이지: 진보 득표력 (0~40% 스케일, 상한 40% 고정으로 상대 감 지각)
+      - 보조지표: 당원/유권자(천명당) 표시 (가능할 때)
     """
-    import pandas as pd
-    import numpy as np
-    import altair as alt
-    from streamlit.components.v1 import html as html_component
-
-    # 내부 유틸
-    def _norm(s) -> str:
-        return " ".join(str(s).replace("\n", " ").replace("\r", " ").strip().split())
-
-    def _read_index_flex() -> pd.DataFrame | None:
-        # 1) 세션에 이미 로드된 경우
-        df = None
-        try:
-            if "df_index" in st.session_state and isinstance(st.session_state["df_index"], pd.DataFrame):
-                df = st.session_state["df_index"]
-        except Exception:
-            df = None
-
-        # 2) data_loader가 있으면 사용
-        if df is None:
-            try:
-                from data_loader import load_index_sample
-                df = load_index_sample(Path("."))  # app과 동일 시그니처 가정
-            except Exception:
-                df = None
-
-        # 3) 로컬 고정 경로(프로젝트 공용 업로드)
-        if df is None:
-            try:
-                df = pd.read_csv("/sti/data/index_sample.csv")
-            except Exception:
-                df = None
-
-        if df is not None and not df.empty:
-            df = df.copy()
-            df.columns = [_norm(c) for c in df.columns]
-        return df
-
-    def _select_one_row(df_all: pd.DataFrame) -> pd.DataFrame | None:
-        if df_all is None or df_all.empty:
-            return None
-        # 후보 컬럼
-        code_col = "code" if "code" in df_all.columns else None
-        name_col = None
-        for c in ["region", "지역구", "선거구", "선거구명", "district"]:
-            if c in df_all.columns:
-                name_col = c
-                break
-
-        # 우선순위: code → region arg → session_state.selected_region → contains 검색
-        cand = pd.DataFrame()
-        if code is not None and code_col:
-            key = _norm(code)
-            cand = df_all[df_all[code_col].astype(str).map(_norm) == key].head(1)
-
-        if (cand is None or cand.empty) and region and name_col:
-            key = _norm(region)
-            cand = df_all[df_all[name_col].astype(str).map(_norm) == key].head(1)
-
-        if (cand is None or cand.empty) and name_col and "selected_region" in st.session_state:
-            key = _norm(st.session_state["selected_region"])
-            cand = df_all[df_all[name_col].astype(str).map(_norm) == key].head(1)
-
-        if (cand is None or cand.empty) and region and name_col:
-            key = _norm(region)
-            cand = df_all[df_all[name_col].astype(str).str.contains(key, na=False)].head(1)
-
-        if cand is None or cand.empty:
-            cand = df_all.head(1)
-
-        return cand
-
-    def find_col_exact_or_compact(df, prefer_name, compact_key):
-        if df is None:
-            return None
-        if prefer_name in df.columns:
-            return prefer_name
-        for c in df.columns:
-            if compact_key in str(c).replace(" ", ""):
-                return c
-        return None
-
-    def _to_int(v, default=None):
-        try:
-            if v is None or (isinstance(v, float) and np.isnan(v)):
-                return default
-            s = str(v).replace(",", "").strip()
-            return int(float(s))
-        except Exception:
-            return default
-
-    def _to_pct_float(v, default=None):
-        # 퍼센트 숫자(예: 35, 35.2, "35%", 0.352?) 모두 수용: 기본은 "백분율 스케일(0~100)"로 맞춤
-        if v is None or (isinstance(v, float) and np.isnan(v)):
-            return default
-        s = str(v).strip().replace(",", "")
-        m = re.match(r"^\s*([+-]?\d+(\.\d+)?)\s*%?\s*$", s)
-        if not m:
-            return default
-        x = float(m.group(1))
-        # "%" 표기가 없고 0~1이면 비율로 본다 → 백분율로 변환
-        if "%" not in s and 0 <= x <= 1:
-            return x * 100.0
-        return x
-
-    def _fmt_pct(x) -> str:
-        try:
-            return f"{float(x):.1f}%"
-        except Exception:
-            return "N/A"
-
-    COLOR_PRG = "#7B2CBF"  # 진보 보라
-    COLOR_TEXT = "#111827"
+    def _norm(s: str) -> str:
+        s = str(s).replace("\n", " ").replace("\r", " ").strip()
+        return " ".join(s.split())
 
     with st.container(border=True):
         st.markdown("**진보당 현황**")
+        st.markdown("<div style='padding-top:4px;'></div>", unsafe_allow_html=True)
 
-        # --- 지역별 단일 행 확보 ---
-        if prg_row is None or prg_row.empty or len(prg_row) != 1:
-            df_all = _read_index_flex()
+        # 안전 로딩
+        if prg_row is None or prg_row.empty:
+            df_all = _load_index_df()
             if df_all is None or df_all.empty:
-                st.info("지표 소스(index_sample)가 없습니다.")
+                st.info("지표 소스(index_sample.csv)를 찾을 수 없습니다. (sti/data/index_sample.csv 경로 확인)")
                 return
-            prg_row = _select_one_row(df_all)
+            df_all.columns = [_norm(c) for c in df_all.columns]
+            code_col = "code" if "code" in df_all.columns else None
+            name_col = "region" if "region" in df_all.columns else None
+
+            prg_row = pd.DataFrame()
+            if code is not None and code_col:
+                key = _norm(code); prg_row = df_all[df_all[code_col].astype(str).map(_norm) == key].head(1)
+            if (prg_row is None or prg_row.empty) and region and name_col:
+                key = _norm(region)
+                prg_row = df_all[df_all[name_col].astype(str).map(_norm) == key].head(1)
+                if prg_row.empty:
+                    prg_row = df_all[df_all[name_col].astype(str).str.contains(key, na=False)].head(1)
             if prg_row is None or prg_row.empty:
-                st.info("해당 지역 데이터를 찾지 못했습니다.")
-                return
+                prg_row = df_all.head(1)
 
         df = prg_row.copy()
         df.columns = [_norm(c) for c in df.columns]
         r = df.iloc[0]
 
-        # --- 지표 컬럼 탐색 ---
-        col_strength = find_col_exact_or_compact(df, "진보정당 득표력", "진보정당득표력")
-        col_members  = find_col_exact_or_compact(df, "진보당 당원수",   "진보당당원수")
+        # 컬럼 탐색
+        col_strength = "진보정당 득표력" if "진보정당 득표력" in df.columns else next((c for c in df.columns if "진보정당득표력" in c.replace(" ", "")), None)
+        col_members  = "진보당 당원수"   if "진보당 당원수"   in df.columns else next((c for c in df.columns if "진보당당원수"   in c.replace(" ", "")), None)
 
-        strength = _to_pct_float(r.get(col_strength)) if col_strength else None  # 0~100 스케일
+        strength = _to_pct_float(r.get(col_strength)) if col_strength else None  # % 단위 값으로 가정
         members  = _to_int(r.get(col_members)) if col_members else None
 
-        # --- KPI 상단 카드 (스타일 개편) ---
-        html_component(f"""
-        <style>
-          .k-wrap {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:center; }}
-          .k-kpi {{ text-align:center; padding:6px 4px; border:1px solid #E5E7EB; border-radius:12px; }}
-          .k-kpi .tit {{ font-size:12px; color:#6B7280; margin-bottom:2px; }}
-          .k-kpi .val {{ font-size:22px; font-weight:700; color:{COLOR_TEXT}; line-height:1.2; }}
-          .k-kpi .sub {{ font-size:11px; color:#9CA3AF; margin-top:2px; }}
-        </style>
-        <div class="k-wrap">
-          <div class="k-kpi">
-            <div class="tit">진보 득표력</div>
-            <div class="val">{_fmt_pct(strength) if strength is not None else "N/A"}</div>
-            <div class="sub">최근 선거 기준</div>
+        # 게이지 막대용 데이터 (0~40%) 고정 스케일
+        s_val = (strength if isinstance(strength,(int,float)) else None)
+        s01 = (s_val/100.0) if s_val is not None else None
+        gauge_df = pd.DataFrame({"항목":["진보 득표력"], "값":[s01 if s01 is not None else 0.0]})
+
+        left_html = f"""
+        <div style="display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:12px; margin-top:2px;">
+          <div style="text-align:center; padding:6px 4px;">
+            <div style="color:{COLOR_TEXT_MID}; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보 득표력</div>
+            <div style="font-weight:800; font-size:1.20rem; color:{COLOR_TEXT_DARK}; letter-spacing:-0.2px;">
+              {_fmt_pct(s_val) if s_val is not None else "N/A"}
+            </div>
           </div>
-          <div class="k-kpi">
-            <div class="tit">진보당 당원수</div>
-            <div class="val">{(f"{members:,}" if members is not None else "N/A")}</div>
-            <div class="sub">명</div>
+          <div style="text-align:center; padding:6px 4px;">
+            <div style="color:{COLOR_TEXT_MID}; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보당 당원수</div>
+            <div style="font-weight:800; font-size:1.20rem; color:{COLOR_TEXT_DARK}; letter-spacing:-0.2px;">
+              {(f"{members:,}명" if members is not None else "N/A")}
+            </div>
           </div>
         </div>
-        """, height=96, scrolling=False)
+        """
+        from streamlit.components.v1 import html as html_component
+        html_component(left_html, height=90, scrolling=False)
 
-        # --- 진보 득표력 미니 막대 (적응형 x축 + 둥근 모서리) ---
-        if strength is not None:
-            s01 = float(strength) / 100.0  # 0~1
-            # 적응형 최대값: 최소 0.30, 최대값은 값의 1.3배로 살짝 여유
-            x_max = max(0.30, min(1.0, s01 * 1.3))
-            gdf = pd.DataFrame({"항목": ["진보 득표력"], "값": [s01]})
-            chart = (
-                alt.Chart(gdf)
-                .mark_bar(cornerRadiusEnd=8)
+        # 게이지 막대 (0~40%)
+        if s01 is not None:
+            g = (
+                alt.Chart(gauge_df)
+                .mark_bar()
                 .encode(
-                    x=alt.X(
-                        "값:Q",
-                        axis=alt.Axis(title=None, format=".0%"),
-                        scale=alt.Scale(domain=[0, float(x_max)])
-                    ),
+                    x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0, 0.40])),
                     y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
-                    color=alt.value(COLOR_PRG),
+                    color=alt.value(COLOR_BLUE),
                     tooltip=[alt.Tooltip("값:Q", title="진보 득표력", format=".1%")],
                 )
-                .properties(height=64, padding={"top": 0, "left": 6, "right": 6, "bottom": 2})
+                .properties(height=70)
             )
-            st.altair_chart(chart, use_container_width=True, theme=None)
+            g_text = (
+                alt.Chart(gauge_df)
+                .mark_text(align="left", dx=4)
+                .encode(
+                    x=alt.X("값:Q", scale=alt.Scale(domain=[0, 0.40])),
+                    y=alt.Y("항목:N"),
+                    text=alt.Text("값:Q", format=".1%"),
+                )
+            )
+            st.altair_chart(g + g_text, use_container_width=True)
+            st.caption("진보 득표력 게이지 (스케일 0–40%)")
         else:
             st.info("진보 득표력 지표가 없습니다.")
-
-        if debug:
-            st.write("DEBUG — columns:", list(df.columns))
-            st.write("DEBUG — row:", r.to_dict())
 
 # =============================
 # 지역 상세 레이아웃
@@ -932,6 +804,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
