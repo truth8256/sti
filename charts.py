@@ -155,34 +155,24 @@ def render_population_box(pop_df: pd.DataFrame):
 # ---------- 연령 구성(도넛) ----------
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280, width_px: int = 360):
     """
-    청년/중년/고령 3조각 모두 표시 + 선택 항목만 강조하는 '반원(half-donut)' 차트
+    청년/중년/고령 3조각 모두 표시 + 선택 항목만 검은 테두리로 강조하는 반원(half-donut) 차트
     - 범례 제거
     - 중앙에 큰 숫자(%) + 라벨
     - '전체' 옵션/60~64 계산 없음
     """
-    import numpy as np
-    import pandas as pd # pandas import 추가 (df 관련)
-    import altair as alt
-    import streamlit as st # streamlit import 추가 (st.radio, st.altair_chart 관련)
     import math
+    import pandas as pd
+    import altair as alt
+    import streamlit as st
 
-    # NOTE: _norm_cols 함수는 이 코드 블록에 없으므로, 해당 함수가 정의되어 있다고 가정합니다.
-    # 안전하게 실행하려면 st.error를 st.info로 변경하고 함수를 제거하거나 정의해야 합니다.
-    # from typing import Callable
-    # def _norm_cols(df: pd.DataFrame) -> pd.DataFrame: ...
-    # df = _norm_cols(pop_df.copy()) 
-    df = pop_df.copy() # _norm_cols 없다고 가정하고 copy만 진행
-
+    df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df is None or df.empty:
         st.info("연령 구성 데이터가 없습니다.")
         return
 
-    # ... (데이터 준비 부분 생략) ...
-
+    # 필수 컬럼
     Y_COL, M_COL, O_COL = "청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"
     TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
-
-    # 필수 컬럼 확인 (원래 코드 그대로)
     for c in (Y_COL, M_COL, O_COL):
         if c not in df.columns:
             st.error(f"필수 컬럼이 없습니다: {c}")
@@ -192,14 +182,14 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # 숫자화 (원래 코드 그대로)
+    # 숫자화
     for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
             errors="coerce",
         ).fillna(0)
 
-    # 합계(동→구) (원래 코드 그대로)
+    # 동 → 구 합계
     y, m, o = float(df[Y_COL].sum()), float(df[M_COL].sum()), float(df[O_COL].sum())
     total_v = float(df[total_col].sum())
     if total_v <= 0:
@@ -208,8 +198,8 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
 
     labels = [Y_COL, M_COL, O_COL]
     values = [y, m, o]
-    ratios01 = [v / total_v for v in values]    # 0~1
-    ratios100 = [r * 100.0 for r in ratios01]  # 0~100%
+    ratios01 = [v / total_v for v in values]     # 0~1
+    ratios100 = [r * 100.0 for r in ratios01]    # 0~100
 
     focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
 
@@ -217,32 +207,30 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
     df_vis = pd.DataFrame({
         "연령": labels,
         "명": values,
-        "비율": ratios01,          # θ 합계=1 기준
-        "표시비율": ratios100,      # 툴팁/텍스트용 %
-        "투명도": [1.0 if l == focus else 0.35 for l in labels],
+        "비율": ratios01,         # theta 합계 1 기준
+        "표시비율": ratios100,     # 텍스트/툴팁용 %
         "색": [color_map[l] for l in labels],
     })
 
-    # 크기/반경/중앙 텍스트 위치 (원래 코드 그대로)
+    # 크기/반경/중앙 좌표
     width  = max(320, int(width_px))
     height = max(220, int(box_height_px))
     inner_r, outer_r = 70, 110
     cx = width / 2
-    cy = height * 0.65 
+    cy = height * 0.65
 
     base = alt.Chart(df_vis).properties(width=width, height=height)
 
-    # ✅ 반원: theta 스케일의 range를 [-π/2, π/2]로 제한해 위쪽 반원만 사용
-    arcs = (
+    # 공통 theta 설정(반원: -π/2 ~ π/2)
+    theta_enc = alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi/2, math.pi/2]))
+
+    # 본문 아크
+    arcs_main = (
         base
-        .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6,
-                  stroke="white", strokeWidth=1)
+        .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
         .encode(
-            # 🌟 수정: 위쪽 반원 설정
-            theta=alt.Theta("비율:Q", stack=True,
-                            scale=alt.Scale(range=[-math.pi / 2, math.pi / 2])),
+            theta=theta_enc,
             color=alt.Color("색:N", scale=None, legend=None),
-            opacity=alt.Opacity("투명도:Q", scale=None),
             tooltip=[
                 alt.Tooltip("연령:N"),
                 alt.Tooltip("명:Q", format=",.0f"),
@@ -251,24 +239,29 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
         )
     )
 
-    # 중앙 큰 숫자(+라벨)
-    idx = labels.index(focus)
-    big_txt = f"{df_vis.loc[idx, '표시비율']:.1f}%"
-    
-    # 🌟 수정: x, y 인코딩에 axis=None을 추가하여 차트 레이어링 시 오류 방지
-    center_big = (
-        alt.Chart(pd.DataFrame({"x":[0]}))
-        .mark_text(fontSize=40, fontWeight="bold", color="#0f172a")
-        .encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big_txt), axis=None) 
-    )
-    center_small = (
-        alt.Chart(pd.DataFrame({"x":[0]}))
-        .mark_text(fontSize=12, color="#475569")
-        .encode(x=alt.value(cx), y=alt.value(cy + 16), text=alt.value(focus), axis=None) 
+    # 하이라이트(검은 테두리) — 본문과 동일한 theta/반경을 반드시 사용해야 위치가 정확히 겹침
+    arcs_highlight = (
+        base
+        .transform_filter(alt.datum.연령 == focus)
+        .mark_arc(innerRadius=inner_r, outerRadius=outer_r, fillOpacity=0, stroke="#111827", strokeWidth=2)
+        .encode(theta=theta_enc)
     )
 
-    # 고정 폭/높이로 렌더(중앙 텍스트 위치 안정)
-    st.altair_chart(arcs + center_big + center_small, use_container_width=False)
+    # 중앙 텍스트
+    idx = labels.index(focus)
+    big_txt_val = f"{df_vis.loc[idx, '표시비율']:.1f}%"
+    center_big = (
+        alt.Chart(pd.DataFrame({"_": [0]}))
+        .mark_text(fontSize=40, fontWeight="bold", color="#0f172a")
+        .encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big_txt_val))
+    )
+    center_small = (
+        alt.Chart(pd.DataFrame({"_": [0]}))
+        .mark_text(fontSize=12, color="#475569")
+        .encode(x=alt.value(cx), y=alt.value(cy + 16), text=alt.value(focus))
+    )
+
+    st.altair_chart(arcs_main + arcs_highlight + center_big + center_small, use_container_width=False)
 
 
 # ---------- 성비(연령대×성별 가로 막대) ----------
@@ -762,6 +755,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
