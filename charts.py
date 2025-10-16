@@ -264,42 +264,28 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     a6064 = max(0.0, min(a6064, total_v))
     denom = total_v
 
-    # --- 라벨/값(먼저 정의!) ---
+    # --- 라벨/값 ---
     labels_main = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
     vals_main   = [y, m, o]
     labels_all  = labels_main + ["60~64세"]
     vals_all    = vals_main + [a6064]
     ratios_all  = [(v / denom * 100.0) if denom > 0 else 0.0 for v in vals_all]
 
-    # --- 상단 UI + 라디오(강조 제어) ---
-    _col1, _col2 = st.columns([1, 1])
-    with _col2:
-        focus = st.radio(
-            "강조",
-            options=["전체"] + labels_main,
-            index=0,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-    with _col1:
-        st.markdown("""
-        <div style="display:flex; justify-content:flex-start; align-items:center; margin:0 4px 6px 4px;">
-          <span style="font-weight:700; color:#0f172a;">분모 기준</span>
-          <span style="
-            display:inline-flex; align-items:center; gap:6px; margin-left:8px;
-            padding:4px 10px; border-radius:999px;
-            background:#F1F5F9; color:#334155; font-size:.82rem; font-weight:600;">
-            전체 유권자(60~64 포함)
-          </span>
-        </div>
-        """, unsafe_allow_html=True)
+    # --- 라디오(강조 제어) ---
+    focus = st.radio(
+        "강조",
+        options=["전체"] + labels_main,
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
 
     # 강조 플래그
     def emph_flag(name: str) -> bool:
         return (focus == "전체") or (name == focus)
 
     df_plot = pd.DataFrame({
-        "계층": labels_all,
+        "연령": labels_all,
         "명": vals_all,
         "비율": [round(x, 6) for x in ratios_all],
         "is_extra": [False, False, False, True],  # 마지막이 60~64세
@@ -323,8 +309,12 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
         .encode(
             theta=alt.Theta("비율:Q"),
-            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
-            tooltip=[alt.Tooltip("계층:N"), alt.Tooltip("명:Q", format=",.0f"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
+            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
+            tooltip=[
+                alt.Tooltip("연령:N"),
+                alt.Tooltip("명:Q", format=",.0f"),
+                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
+            ],
         )
     )
     arcs_main = (
@@ -332,16 +322,23 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
         .encode(
             theta=alt.Theta("비율:Q"),
-            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range),
+            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range),
                             legend=alt.Legend(title=None, orient="top", values=labels_main)),
             opacity=alt.condition("datum.강조 == true", alt.value(1.0), alt.value(0.25)),
-            tooltip=[alt.Tooltip("계층:N"), alt.Tooltip("명:Q", format=",.0f"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
+            tooltip=[
+                alt.Tooltip("연령:N"),
+                alt.Tooltip("명:Q", format=",.0f"),
+                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
+            ],
         )
     )
     highlight = (
         base.transform_filter("datum.is_extra == false && datum.강조 == true")
         .mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2, fillOpacity=0)
-        .encode(theta="비율:Q", color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None))
+        .encode(
+            theta="비율:Q",
+            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
+        )
     )
 
     st.altair_chart(arcs_extra + arcs_main + highlight, use_container_width=False)
@@ -829,6 +826,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
