@@ -108,13 +108,11 @@ def _pie_chart(title: str, labels: list[str], values: list[float], colors: list[
 
 
 # 인구 정보
-
-# 인구 정보 (population.csv 집계 + 총유권자 카드 + 유동인구 누적 막대)
 def render_population_box(pop_df: pd.DataFrame):
     import numpy as np
+    import altair as alt
 
     with st.container(border=True):
-        st.markdown("**인구 정보**")
 
         if pop_df is None or pop_df.empty:
             st.info("유동인구/연령/성비 차트를 위한 데이터가 없습니다.")
@@ -124,8 +122,8 @@ def render_population_box(pop_df: pd.DataFrame):
         df = pop_df.copy()
         df.columns = [str(c).strip().replace("\n", "").replace("\r", "") for c in df.columns]
 
-        # 컬럼명 매핑 (질문에서 준 헤더 기준)
-        code_col = next((c for c in ["지역구코드","선거구코드","코드","code","CODE"] if c in df.columns), None)
+        # 컬럼명 매핑
+        code_col  = next((c for c in ["지역구코드","선거구코드","코드","code","CODE"] if c in df.columns), None)
         total_col = next((c for c in ["전체 유권자","전체유권자","total_voters"] if c in df.columns), None)
         float_col = next((c for c in ["유동인구","유권자 이동","floating","mobility"] if c in df.columns), None)
 
@@ -144,7 +142,7 @@ def render_population_box(pop_df: pd.DataFrame):
         df[total_col] = df[total_col].apply(_to_num)
         df[float_col] = df[float_col].apply(_to_num)
 
-        # 동→구 합계 (같은 지역구코드끼리 합)
+        # 구 합계 (같은 지역구코드끼리 합)
         if code_col:
             agg = df.groupby(code_col, dropna=False)[[total_col, float_col]].sum(min_count=1).reset_index(drop=True)
             total_voters = float(agg[total_col].sum())
@@ -162,30 +160,39 @@ def render_population_box(pop_df: pd.DataFrame):
         floating_pop = max(0.0, min(floating_pop, total_voters))
         others = max(0.0, total_voters - floating_pop)
 
-        # 좌: 전체 유권자 수 카드 / 우: 유동인구 누적 단일 막대
+        # 좌: 텍스트(전체 유권자 수 / 유동인구) / 우: 누적 막대
         c1, c2 = st.columns([1, 3])
 
         with c1:
-            st.metric("전체 유권자 수", f"{int(round(total_voters)):,}명")
+            st.markdown("**전체 유권자 수**")
+            st.markdown(f"{int(round(total_voters)):,}명")
+            st.markdown("")  
+            st.markdown("**유동인구**")
+            st.markdown(f"{int(round(floating_pop)):,}명")
 
         with c2:
-            st.caption("유동인구 (전체 유권자 대비)")
-            bar_df = pd.DataFrame({"구성": ["유동인구","그 외"], "값": [floating_pop, others], "x": ["전체 유권자","전체 유권자"]})
+            bar_df = pd.DataFrame({
+                "구성": ["유동인구","그 외"],
+                "값": [floating_pop, others],
+                "x": ["전체 유권자","전체 유권자"]
+            })
+
             chart = (
                 alt.Chart(bar_df)
                 .mark_bar()
                 .encode(
                     x=alt.X("x:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
                     y=alt.Y("값:Q", stack="zero", axis=alt.Axis(title=None)),
-                    color=alt.Color("구성:N",
+                    color=alt.Color(
+                        "구성:N",
                         scale=alt.Scale(domain=["유동인구","그 외"], range=["#7C83FD","#D6DAF8"]),
-                        legend=alt.Legend(title=None, orient="right")),
+                        legend=alt.Legend(title=None, orient="right", values=["유동인구"])  
+                    ),
                     tooltip=[alt.Tooltip("구성:N"), alt.Tooltip("값:Q", format=",")]
                 )
-                .properties(height=160)
+                .properties(width=220, height=160)  # 그래프 크기 
             )
-            st.altair_chart(chart, use_container_width=True)
-
+            st.altair_chart(chart, use_container_width=False)
 
 
 # 정당성향별 득표추이
@@ -672,5 +679,6 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
