@@ -208,19 +208,11 @@ def render_population_box(pop_df: pd.DataFrame):
 
 
 # 연령 구성
-def render_age_highlight_chart(pop_df: pd.DataFrame):
-    """
-    population.csv 컬럼 가정:
-      - 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상)
-      - (분모용) 60~64세 또는 전체 유권자(둘 중 하나라도 있으면 OK)
-
-    계산 원칙:
-      - 최종 표시는 '전체 유권자(= 청년 + 중년 + 60~64 + 고령)'를 분모로 한 비율
-      - 값이 건수면: (각 그룹 건수 / 전체유권자) * 100
-      - 값이 퍼센트면:
-          * 60~64도 퍼센트로 있으면 네 값 합(청/중/60~64/고령)을 100으로 보고 재스케일
-          * 그렇지 않으면 '전체 유권자'가 없으므로 계산 불가 → 안내
-    """
+def render_age_highlight_chart(
+    pop_df: pd.DataFrame,
+    *,
+    box_height_px: int = 320,   # 옆 박스와 높이 맞추기 용
+):
     import numpy as np
     import altair as alt
     import re
@@ -231,156 +223,143 @@ def render_age_highlight_chart(pop_df: pd.DataFrame):
 
     df = _norm_cols(pop_df.copy())
 
-    # ---- 컬럼 매핑 ----
-    code_col  = next((c for c in ["코드","지역구코드","선거구코드","지역코드","code","CODE"] if c in df.columns), None)
-    total_col = next((c for c in ["전체 유권자","전체유권자","total_voters"] if c in df.columns), None)
+    # ----- 컬럼 탐색 -----
+    code_col = next((c for c in ["지역구코드","선거구코드","코드","code","CODE"] if c in df.columns), None)
 
-    # 정확 이름 우선 + 오탈자 대비 퍼지
-    target = {
+    # 세 그룹(정확명 + 퍼지)
+    want = {
         "청년층(18~39세)": None,
         "중년층(40~59세)": None,
         "고령층(65세 이상)": None,
     }
-    for k in list(target.keys()):
-        if k in df.columns: target[k] = k
-    if None in target.values():
+    for k in list(want.keys()):
+        if k in df.columns: want[k] = k
+    if None in want.values():
         for c in df.columns:
             s = str(c)
-            if target["청년층(18~39세)"] is None and re.search(r"청년.*18.*39", s): target["청년층(18~39세)"] = c
-            if target["중년층(40~59세)"] is None and re.search(r"중년.*40.*59", s): target["중년층(40~59세)"] = c
-            if target["고령층(65세 이상)"] is None and re.search(r"고령.*65", s): target["고령층(65세 이상)"] = c
-
-    if None in target.values():
+            if want["청년층(18~39세)"] is None and re.search(r"청년.*18.*39", s): want["청년층(18~39세)"] = c
+            if want["중년층(40~59세)"] is None and re.search(r"중년.*40.*59", s): want["중년층(40~59세)"] = c
+            if want["고령층(65세 이상)"] is None and re.search(r"고령.*65", s): want["고령층(65세 이상)"] = c
+    if None in want.values():
         st.error("필수 컬럼(청년층/중년층/고령층)을 찾지 못했습니다.")
         return
 
-    # 60~64세 후보(여러 표기 대응)
-    sixty_regexes = [
-        r"60\s*[\-~]\s*64", r"60\D*64", r"^60 ?~ ?64세$", r"60~64세", r"60-64세",
-        r"60대\(60~64\)", r"60대\s*\(60\s*[\-~]\s*64\)"
-    ]
+    # 60~64세(다양한 표기 대응)
     sixty_col = None
     for c in df.columns:
-        for pat in sixty_regexes:
-            if re.search(pat, str(c)):
-                sixty_col = c; break
-        if sixty_col: break
+        s = str(c)
+        if re.search(r"60\s*[\-~]\s*64|60~64세|60-64세|60대\s*\(60\s*[\-~]\s*64\)", s):
+            sixty_col = c; break
 
-    # ---- 집계(같은 지역구는 합산) ----
-    cols = [target["청년층(18~39세)"], target["중년층(40~59세)"], target["고령층(65세 이상)"]]
-    use_cols = cols + ([sixty_col] if sixty_col else []) + ([total_col] if total_col else [])
+    # 전체 유권자 수
+    total_col = next((c for c in ["전체 유권자 수","전체 유권자","전체유권자","total_voters"] if c in df.columns), None)
+
+    base_cols = [want["청년층(18~39세)"], want["중년층(40~59세)"], want["고령층(65세 이상)"]]
+    use_cols = base_cols + ([sixty_col] if sixty_col else []) + ([total_col] if total_col else [])
     use_cols = [c for c in use_cols if c is not None]
 
+    # ----- 합산(같은 선거구끼리) -----
     if code_col:
         grp = df.groupby(code_col, dropna=False)[use_cols].sum(min_count=1)
         row = grp.iloc[0]
     else:
         row = df[use_cols].sum(numeric_only=True)
 
-    def _to_num(x):
+    def to_num(x):
         if pd.isna(x): return np.nan
         if isinstance(x, (int,float)): return float(x)
         s = str(x).replace(",","").replace("%","").strip()
         try: return float(s)
         except: return np.nan
 
-    y, m, s = (_to_num(row[cols[0]]), _to_num(row[cols[1]]), _to_num(row[cols[2]]))
-    a60_64  = _to_num(row[sixty_col]) if sixty_col else np.nan
-    total_v = _to_num(row[total_col]) if total_col else np.nan
+    y = to_num(row[base_cols[0]])
+    m = to_num(row[base_cols[1]])
+    s = to_num(row[base_cols[2]])
+    a60_64  = to_num(row[sixty_col]) if sixty_col else np.nan
+    total_v = to_num(row[total_col]) if total_col else np.nan
 
-    vals_three = [v for v in [y, m, s] if v==v]
-    if not vals_three or sum(vals_three) == 0:
-        st.info("연령 구성 값이 0입니다.")
+    # 분모: 전체 유권자 수가 최우선, 없으면 (청+중+60~64+고령)
+    if total_v==total_v and total_v > 0:
+        denom = total_v
+    else:
+        denom = sum(v for v in [y, m, a60_64, s] if v==v)
+    if not isinstance(denom, (int, float)) or denom <= 0:
+        st.info("전체 유권자 분모를 계산할 수 없습니다. ('전체 유권자 수' 또는 '60~64세'가 필요합니다.)")
         return
 
-    max_three = max(vals_three)
+    # 표 데이터(카테고리 4개: 청년/중년/고령/60~64)
+    labels = ["청년층(18~39세)","중년층(40~59세)","고령층(65세 이상)"]
+    vals   = [y or 0.0, m or 0.0, s or 0.0]
+    labels_all = labels + (["60~64세"] if a60_64==a60_64 else [])
+    vals_all   = vals + ([a60_64] if a60_64==a60_64 else [])
 
-    # ---- 케이스 A: '건수' 기반(가장 안전) ----
-    #   - 전체 유권자(total_v)가 있으면 그걸 분모로
-    #   - 없으면 60~64가 있으면 분모 = (y+m+a60_64+s)
-    def render_with_counts(denom):
-        if denom <= 0:
-            st.info("전체 유권자(분모)가 0입니다.")
-            return
-        vals_pct = [ (y/denom*100.0 if y==y else np.nan),
-                     (m/denom*100.0 if m==m else np.nan),
-                     (s/denom*100.0 if s==s else np.nan) ]
-        _draw_age_donut(labels=["청년층(18~39세)","중년층(40~59세)","고령층(65세 이상)"], vals_pct=vals_pct)
+    data = pd.DataFrame({
+        "계층": labels_all,
+        "명": vals_all,
+        "비율": [(v/denom*100.0 if isinstance(v,(int,float)) and denom>0 else np.nan) for v in vals_all]
+    })
 
-    # ---- 케이스 B: '퍼센트' 기반(0~1 or 0~100)
-    #   - 60~64 퍼센트도 있으면 네 값의 합을 100으로 보고 재스케일
-    #   - 60~64 퍼센트가 없고 total도 없으면 계산 불가
-    def render_with_percents(scale_factor):
-        y2, m2, s2 = (y*scale_factor, m*scale_factor, s*scale_factor)
-        if a60_64==a60_64:
-            a2 = a60_64*scale_factor
-            denom = y2 + m2 + s2 + a2
-            if denom <= 0:
-                st.info("분모(퍼센트 합)가 0입니다.")
-                return
-            vals_pct = [ y2/denom*100.0, m2/denom*100.0, s2/denom*100.0 ]
-            _draw_age_donut(labels=["청년층(18~39세)","중년층(40~59세)","고령층(65세 이상)"], vals_pct=vals_pct)
-        else:
-            st.info("퍼센트 데이터에서는 '60~64세' 값이 필요합니다. (또는 '전체 유권자' 건수 제공)")
+    # ── 상단 배지(분모 표기)로 "60~64 포함" 명시 ──
+    st.markdown("""
+    <div style="display:flex; justify-content:flex-end; margin:0 4px 4px 0;">
+      <span style="
+        display:inline-flex; align-items:center; gap:6px;
+        padding:4px 10px; border-radius:999px;
+        background:#F1F5F9; color:#334155; font-size:.82rem; font-weight:600;">
+        분모: 전체 유권자(60~64 포함)
+      </span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # 분기: 값 스케일 판별
-    if max_three <= 1.0:
-        # 0~1 스케일의 퍼센트
-        render_with_percents(scale_factor=100.0)
-    elif max_three <= 100.0 and all(v<=100.0 for v in vals_three):
-        # 0~100 스케일의 퍼센트
-        render_with_percents(scale_factor=1.0)
-    else:
-        # 건수
-        if total_v==total_v and total_v > 0:
-            render_with_counts(denom=total_v)
-        elif a60_64==a60_64:
-            denom = (y if y==y else 0) + (m if m==m else 0) + (a60_64 if a60_64==a60_64 else 0) + (s if s==s else 0)
-            render_with_counts(denom=denom)
-        else:
-            st.info("분모가 없습니다. '60~64세' 또는 '전체 유권자'가 필요합니다.")
+    # ── 차트: 60~64는 회색, 범례에는 3그룹만 노출하고 선택 바인딩 ──
+    color_domain = labels_all
+    color_range  = ["#86B6F6","#5AA9E6","#2E86DE"] + (["#9AA1AC"] if "60~64세" in labels_all else [])
+    legend_values = labels  # 범례에 60~64는 숨김
 
+    # 범례 클릭 선택(60~64는 선택 대상 제외)
+    focus = alt.selection_point(fields=["계층"], bind="legend")
 
-def _draw_age_donut(labels, vals_pct):
-    import altair as alt
-    data = pd.DataFrame({"계층": labels, "비율": vals_pct})
     base = alt.Chart(data)
 
-    # 라디오(강조 토글)
-    options = ["전체"] + labels
-    focus = alt.param(
-        name="focus",
-        bind=alt.binding_radio(options=options, labels=options),
-        value="전체"
-    )
-
-    color_scale = alt.Scale(domain=labels, range=["#86B6F6", "#5AA9E6", "#2E86DE"])
-
     arcs = (
-        base.add_params(focus)
-        .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
+        base
+        .mark_arc(innerRadius=72, stroke="white", strokeWidth=1)
         .encode(
             theta=alt.Theta("비율:Q"),
-            color=alt.Color("계층:N", scale=color_scale, legend=None),
-            opacity=alt.condition("datum.계층 == focus || focus == '전체'", alt.value(1.0), alt.value(0.25)),
-            tooltip=[alt.Tooltip("계층:N"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
+            color=alt.Color("계층:N",
+                            scale=alt.Scale(domain=color_domain, range=color_range),
+                            legend=alt.Legend(title=None, orient="top", values=legend_values)),
+            opacity=alt.condition(
+                alt.expr.if_(alt.datum.계층 == "60~64세", True, focus),  # 60~64는 선택 무시
+                alt.value(1.0), alt.value(0.25)
+            ),
+            tooltip=[
+                alt.Tooltip("계층:N"),
+                alt.Tooltip("명:Q", format=",.0f"),
+                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
+            ],
         )
-        .properties(width=280, height=280)
+        .add_params(focus)
+        .properties(width=280, height=box_height_px-60)  # 상단 배지 높이 감안
     )
 
+    # 선택된 조각에 외곽선 강조(60~64 제외)
     highlight = (
-        base.mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2)
-        .encode(theta="비율:Q", color=alt.Color("계층:N", scale=color_scale, legend=None))
-        .transform_filter("datum.계층 == focus && focus != '전체'")
+        base
+        .transform_filter("datum.계층 != '60~64세'")
+        .mark_arc(innerRadius=72, stroke="#111827", strokeWidth=2)
+        .encode(
+            theta="비율:Q",
+            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
+            opacity=alt.condition(focus, alt.value(1.0), alt.value(0.0)),
+        )
+        .add_params(focus)
     )
 
     st.altair_chart(arcs + highlight, use_container_width=True)
-    st.caption("※ 분모는 '전체 유권자(청년+중년+60~64+고령)' 입니다.")
-
 
 
 # 정당성향별 득표추이
-
 def render_vote_trend_chart(ts: pd.DataFrame):
     if ts is None or ts.empty:
         st.info("득표 추이 데이터가 없습니다.")
@@ -863,6 +842,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
