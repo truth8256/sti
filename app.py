@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 
 from data_loader import (
-    load_population_agg,     # population.csv (구 단위 합계본)
+    load_population,         # population.csv (구 단위 합계본)
     load_party_labels,       # party_labels.csv
     load_vote_trend,         # vote_trend.csv
     load_results_2024,       # 5_na_dis_results.csv
