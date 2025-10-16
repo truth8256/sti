@@ -4,7 +4,6 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 from metrics import compute_24_gap
-from charts import render_population_box
 
 # =============================
 # 기본 유틸
@@ -733,6 +732,7 @@ with top_right:
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
