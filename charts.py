@@ -133,7 +133,9 @@ def render_population_box(pop_df: pd.DataFrame):
             bar_df = pd.DataFrame({"항목":["유동비율"], "값":[mobility_rate]})
             x_max = 0.10
             
-            # 🌟🌟🌟 오류 수정 부분: mark_bar와 encode 정의 복원 🌟🌟🌟
+            # 🌟🌟🌟 오류 수정 핵심 부분: bar, txt, rule 차트 정의 재확인 🌟🌟🌟
+            
+            # 1. bar 차트: 데이터와 인코딩이 완전해야 함
             bar = (
                 alt.Chart(bar_df).mark_bar(color=COLOR_BLUE)
                 .encode(
@@ -143,19 +145,22 @@ def render_population_box(pop_df: pd.DataFrame):
                 )
                 .properties(height=68, padding={"top": 0, "left": 6, "right": 6, "bottom": 4})
             )
+            
+            # 2. txt 차트: 데이터와 인코딩이 완전해야 함
             txt = alt.Chart(bar_df).mark_text(align="left", dx=4)\
                 .encode(x="값:Q", y="항목:N", text=alt.Text("값:Q", format=".1%"))
                 
-            # ❗️Altair v5 레이어 TypeError 회피:
-            # mark_rule을 별도 더미 데이터프레임으로 분리하여 인코딩 충돌 방지
+            # 3. rule 차트: 별도 데이터프레임과 인코딩으로 레이어링 에러 회피 (이전 수정안)
+            # 5% (0.05) 위치에 수직선을 그립니다.
             rule = alt.Chart(pd.DataFrame({"x_val": [0.05]}))\
                 .mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6)\
                 .encode(x=alt.X("x_val:Q", title=None)) # x축 인코딩만 명시
 
-            # 최종 레이어링은 alt.layer() 함수를 사용
-            layered = alt.layer(bar, txt, rule).resolve_scale(x='shared', y='shared')
+            # 최종 레이어링 (차트 객체가 모두 유효한지 확인)
+            # layered = alt.layer(bar, txt, rule).resolve_scale(x='shared', y='shared')
+            layered = (bar + txt + rule).resolve_scale(x='shared', y='shared') # alt.layer 대신 + 연산자 사용 (동일 효과)
             st.altair_chart(layered, use_container_width=True)
-        
+            
         st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================
@@ -625,3 +630,4 @@ def render_region_detail_layout(df_pop: pd.DataFrame|None=None, df_trend: pd.Dat
     with c1: render_results_2024_card(df_24)
     with c2: render_incumbent_card(df_cur)
     with c3: render_prg_party_box(df_prg, df_pop)
+
