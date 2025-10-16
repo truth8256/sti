@@ -352,7 +352,9 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
 # =============================
 def render_vote_trend_chart(ts: pd.DataFrame):
     """
-    [REQ-6] 2022년도 정렬: 2022 대선 → 2022 광역 비례 → 2022 광역단체장
+    [REQ-6] 연도별 정렬 규칙:
+      - 같은 연도 내에서는: 대선(1) → 광역 비례(2) → 광역단체장(3) → 총선 비례(4) → 기타(9)
+      - 2022년도 동일 규칙 적용(즉, '2022 대선 → 2022 광역 비례 → 2022 광역단체장')
     """
     if ts is None or ts.empty:
         st.info("득표 추이 데이터가 없습니다.")
@@ -360,84 +362,130 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     df = _norm_cols(ts.copy())
 
+    # ---- 컬럼 자동 탐색 ----
     label_col = next((c for c in ["계열","성향","정당성향","party_label","label"] if c in df.columns), None)
     value_col = next((c for c in ["득표율","비율","share","ratio","pct","prop"] if c in df.columns), None)
     wide_cols = [c for c in ["민주","보수","진보","기타"] if c in df.columns]
-    id_col  = next((c for c in ["선거명","election","분류","연도","year"] if c in df.columns), None)
-    year_col = next((c for c in ["연도","year"] if c in df.columns), None)
+    id_col    = next((c for c in ["선거명","election","분류","연도","year"] if c in df.columns), None)
+    year_col  = next((c for c in ["연도","year"] if c in df.columns), None)
 
+    # ---- Long 형태로 정규화 ----
     if wide_cols:
-        if not id_col: st.info("선거명을 식별할 컬럼이 필요합니다."); return
+        if not id_col:
+            st.info("선거명을 식별할 컬럼이 필요합니다.")
+            return
         long_df = df.melt(id_vars=id_col, value_vars=wide_cols, var_name="계열", value_name="득표율")
         base_e = long_df[id_col].astype(str)
     else:
-        if not (label_col and value_col): st.info("정당 성향(계열)과 득표율 컬럼이 필요합니다."); return
-        long_df = df.rename(columns={label_col:"계열", value_col:"득표율"}).copy()
-        if id_col: base_e = long_df[id_col].astype(str)
-        elif year_col: base_e = long_df[year_col].astype(str)
-        else: st.info("선거명을 식별할 컬럼이 필요합니다."); return
+        if not (label_col and value_col):
+            st.info("정당 성향(계열)과 득표율 컬럼이 필요합니다.")
+            return
+        long_df = df.rename(columns={label_col: "계열", value_col: "득표율"}).copy()
+        if id_col:
+            base_e = long_df[id_col].astype(str)
+        elif year_col:
+            base_e = long_df[year_col].astype(str)
+        else:
+            st.info("선거명을 식별할 컬럼이 필요합니다.")
+            return
 
+    # ---- 선거명 한글 표기 변환 ----
     def _norm_token(s: str) -> str:
-        s = str(s).strip().replace("-","_").replace(" ","_").upper()
-        return re.sub(r"_+","_", s)
+        s = str(s).strip().replace("-", "_").replace(" ", "_").upper()
+        return re.sub(r"_+", "_", s)
+
     CODE = re.compile(r"^(20\d{2})(?:_([SG]))?_(NA|LOC|PRESIDENT)(?:_(PRO|GOV))?$")
     def to_kr(s: str) -> str:
-        key = _norm_token(s); m = CODE.fullmatch(key)
-        if not m: return str(s)
+        key = _norm_token(s)
+        m = CODE.fullmatch(key)
+        if not m:
+            return str(s)
         year, _rg, lvl, kind = m.group(1), m.group(2), m.group(3), m.group(4)
-        if lvl=="PRESIDENT": return f"{year} 대선"
-        if lvl=="NA"  and kind=="PRO": return f"{year} 총선 비례"
-        if lvl=="LOC" and kind=="PRO": return f"{year} 광역 비례"
-        if lvl=="LOC" and kind=="GOV": return f"{year} 광역단체장"
+        if lvl == "PRESIDENT":
+            return f"{year} 대선"
+        if lvl == "NA" and kind == "PRO":
+            return f"{year} 총선 비례"
+        if lvl == "LOC" and kind == "PRO":
+            return f"{year} 광역 비례"
+        if lvl == "LOC" and kind == "GOV":
+            return f"{year} 광역단체장"
         return s
 
     long_df["선거명_표시"] = base_e.apply(to_kr)
-    long_df = long_df.dropna(subset=["선거명_표시","계열","득표율"])
-    long_df["득표율"] = pd.to_numeric(long_df["득표율"], errors="coerce")
-    mask_01 = (long_df["득표율"]<=1.0) & (long_df["득표율"]>=0)
-    if mask_01.any():
-        long_df.loc[mask_01,"득표율"] = long_df.loc[mask_01,"득표율"]*100.0
 
-    long_df["연도"] = pd.to_numeric(long_df["선거명_표시"].str.extract(r"^(20\d{2})")[0], errors="coerce").fillna(-1).astype(int)
-    def etype(s:str)->str:
-        if "대선" in s: return "대선"
-        if "광역 비례" in s: return "광역 비례"
-        if "광역단체장" in s: return "광역단체장"
-        if "총선 비례" in s: return "총선 비례"
+    # ---- 수치 정리 ----
+    long_df = long_df.dropna(subset=["선거명_표시", "계열", "득표율"])
+    long_df["득표율"] = pd.to_numeric(long_df["득표율"], errors="coerce")
+    long_df = long_df.dropna(subset=["득표율"])
+
+    # ---- 연도/타입 파생 & 정렬 순서 계산 ----
+    long_df["연도"] = (
+        pd.to_numeric(long_df["선거명_표시"].str.extract(r"^(20\d{2})")[0], errors="coerce")
+        .fillna(-1).astype(int)
+    )
+
+    def etype(s: str) -> str:
+        if "대선" in s:
+            return "대선"
+        if "광역 비례" in s:
+            return "광역 비례"
+        if "광역단체장" in s:
+            return "광역단체장"
+        if "총선 비례" in s:
+            return "총선 비례"
         return "기타"
+
     long_df["선거타입"] = long_df["선거명_표시"].map(etype)
-    type_rank = {"대선":1, "광역 비례":2, "광역단체장":3, "총선 비례":4, "기타":9}
-    uniq = long_df[["선거명_표시","연도","선거타입"]].drop_duplicates().copy()
+
+    # 연도 내 타입 정렬 우선순위
+    type_rank = {"대선": 1, "광역 비례": 2, "광역단체장": 3, "총선 비례": 4, "기타": 9}
+
+    uniq = long_df[["선거명_표시", "연도", "선거타입"]].drop_duplicates().copy()
     uniq["순위"] = uniq["선거타입"].map(type_rank).fillna(9)
-    uniq = uniq.sort_values(["연도","순위","선거명_표시"])
+    uniq = uniq.sort_values(["연도", "순위", "선거명_표시"])
     order = uniq["선거명_표시"].tolist()
 
-    party_order = ["민주","보수","진보","기타"]
-    color_map = {"민주":"#152484","보수":"#E61E2B","진보":"#7B2CBF","기타":"#6C757D"}
+    # ---- 색상/범례 순서 ----
+    party_order = ["민주", "보수", "진보", "기타"]
+    color_map = {"민주": "#152484", "보수": "#E61E2B", "진보": "#7B2CBF", "기타": "#6C757D"}
     present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
-    colors  = [color_map.get(p, "#6B7280") for p in present]
+    colors = [color_map.get(p, "#6B7280") for p in present]
 
-    selector = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
+    # ---- 인터랙션(마우스오버로 강조 + 확대/이동) ----
+    selector = alt.selection_point(fields=["선거명_표시", "계열"], nearest=True, on="mouseover", empty=False)
 
     line = (
         alt.Chart(long_df)
         .mark_line(point=False, strokeWidth=3)
         .encode(
-            x=alt.X("선거명_표시:N", sort=order_by_year, title="선거명",
-                    axis=alt.Axis(labelAngle=-35, labelOverlap=False, labelPadding=6, labelLimit=280)),
+            x=alt.X(
+                "선거명_표시:N",
+                sort=order,  # ✅ 정렬 순서
+                title="선거명",
+                axis=alt.Axis(labelAngle=-35, labelOverlap=False, labelPadding=6, labelLimit=280),
+            ),
             y=alt.Y("득표율:Q", title="득표율(%)"),
-            color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors),
-                            legend=alt.Legend(title=None, orient="top")),
+            color=alt.Color(
+                "계열:N",
+                scale=alt.Scale(domain=present, range=colors),
+                legend=alt.Legend(title=None, orient="top"),
+            ),
         )
     )
 
+    # 넓은 히트영역(마우스 올리기 쉬움)
     hit = (
         alt.Chart(long_df)
         .mark_circle(size=600, opacity=0)
-        .encode(x="선거명_표시:N", y="득표율:Q", color=alt.Color("계열:N", legend=None))
+        .encode(
+            x="선거명_표시:N",
+            y="득표율:Q",
+            color=alt.Color("계열:N", legend=None),
+        )
         .add_params(selector)
     )
 
+    # 강조 포인트 + 풍부한 툴팁
     points = (
         alt.Chart(long_df)
         .mark_circle(size=140)
@@ -747,6 +795,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
