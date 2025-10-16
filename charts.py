@@ -258,7 +258,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 280
     st.altair_chart(arcs + center_big + center_small, use_container_width=False)
 
 # ---------- 성비(연령대×성별 가로 막대) ----------
-def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
+def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 360):
     import numpy as np
 
     if pop_df is None or pop_df.empty:
@@ -277,50 +277,81 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
         return
 
     def _to_num(x):
-        if pd.isna(x): return 0.0
-        if isinstance(x, (int, float)): return float(x)
+        if pd.isna(x): 
+            return 0.0
+        if isinstance(x, (int, float)): 
+            return float(x)
         s = str(x).strip().replace(",", "")
-        try: return float(s)
-        except: return 0.0
+        try:
+            return float(s)
+        except:
+            return 0.0
 
     df_num = df[expect_cols].applymap(_to_num).fillna(0.0)
     sums = df_num.sum(axis=0)
+    if float(sums.sum()) <= 0:
+        st.info("성비 데이터(연령×성별)가 모두 0입니다.")
+        return
 
     tidy_rows = []
     for a in age_buckets:
         m_col, f_col = f"{a} 남성", f"{a} 여성"
         m_val, f_val = float(sums[m_col]), float(sums[f_col])
-        total = m_val + f_val
-        m_pct = (m_val / total * 100.0) if total > 0 else 0.0
-        f_pct = (f_val / total * 100.0) if total > 0 else 0.0
-        tidy_rows.append({"연령대": a, "성별": "남성", "명": m_val, "점유율": m_pct})
-        tidy_rows.append({"연령대": a, "성별": "여성", "명": f_val, "점유율": f_pct})
+        age_total = m_val + f_val
+        m_in_age = (m_val / age_total * 100.0) if age_total > 0 else 0.0
+        f_in_age = (f_val / age_total * 100.0) if age_total > 0 else 0.0
+        tidy_rows.append({"연령대": a, "성별": "남성", "명": m_val, "연령대내비중": m_in_age, "연령대총합": age_total})
+        tidy_rows.append({"연령대": a, "성별": "여성", "명": f_val, "연령대내비중": f_in_age, "연령대총합": age_total})
 
     tidy = pd.DataFrame(tidy_rows)
-    if tidy["명"].sum() <= 0:
-        st.info("성비 데이터(연령×성별)가 모두 0입니다.")
-        return
+
+    # 표기 라벨: 20대 → 18–29세
+    age_label_map = {"20대": "18–29세", "30대": "30대", "40대": "40대", "50대": "50대", "60대": "60대", "70대 이상": "70대 이상"}
+    tidy["연령대표시"] = tidy["연령대"].map(age_label_map)
 
     color_domain = ["남성", "여성"]
     color_range = ["#3B82F6", "#EF4444"]
 
+    # 항목 간 간격 확보
+    n_items = tidy["연령대"].nunique()
+    per_item_px = 52
+    height_px = max(box_height_px, n_items * per_item_px + 40)
+
+    st.markdown("**연령별, 성별 인구분포 (각 연령 100%)**")
+
     chart = (
         alt.Chart(tidy)
-        .mark_bar(size=16)
+        .mark_bar(size=18)
         .encode(
-            y=alt.Y("연령대:N", sort=age_buckets, title=None, axis=alt.Axis(labelLimit=120)),
-            x=alt.X("명:Q", title="인원(명)", axis=alt.Axis(format=",.0f")),
-            color=alt.Color("성별:N", scale=alt.Scale(domain=color_domain, range=color_range),
-                            legend=alt.Legend(title=None, orient="top")),
+            y=alt.Y(
+                "연령대표시:N",
+                sort=[age_label_map[a] for a in age_buckets],
+                title=None,
+                axis=alt.Axis(labelLimit=140),
+                scale=alt.Scale(band=0.62)
+            ),
+            # 연령대별 막대가 항상 100%가 되도록 정규화
+            x=alt.X(
+                "명:Q",
+                stack="normalize",
+                title="구성비(%)",
+                axis=alt.Axis(format=".0%")
+            ),
+            color=alt.Color(
+                "성별:N",
+                scale=alt.Scale(domain=color_domain, range=color_range),
+                legend=alt.Legend(title=None, orient="top")
+            ),
+            order=alt.Order("성별", sort="ascending"),
             tooltip=[
-                alt.Tooltip("연령대:N", title="연령대"),
+                alt.Tooltip("연령대표시:N", title="연령대"),
                 alt.Tooltip("성별:N", title="성별"),
-                alt.Tooltip("명:Q", title="인원", format=",.0f"),
-                alt.Tooltip("점유율:Q", title="해당 연령대 내 비중", format=".1f")
+                alt.Tooltip("연령대내비중:Q", title="해당 연령대 내 비중", format=".1f"),
+                alt.Tooltip("연령대총합:Q", title="해당 연령대 인원", format=",.0f"),
+                alt.Tooltip("명:Q", title="성별 인원", format=",.0f"),
             ],
-            order=alt.Order("성별", sort="ascending")
         )
-        .properties(height=max(190, box_height_px - 60))
+        .properties(height=height_px)
     )
 
     st.altair_chart(chart, use_container_width=True)
@@ -713,6 +744,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
