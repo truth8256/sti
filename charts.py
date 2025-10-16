@@ -141,9 +141,9 @@ def render_population_box(pop_df: pd.DataFrame):
             return
 
         df = _norm_cols(pop_df.copy())
-        code_col = next((c for c in ["지역구코드", "선거구코드", "코드", "code", "CODE"] if c in df.columns), None)
-        total_col = next((c for c in ["전체 유권자", "전체유권자", "total_voters"] if c in df.columns), None)
-        float_col = next((c for c in ["유동인구", "유권자 이동", "floating", "mobility"] if c in df.columns), None)
+        code_col  = next((c for c in ["지역구코드","선거구코드","코드","code","CODE"] if c in df.columns), None)
+        total_col = next((c for c in ["전체 유권자","전체유권자","total_voters"] if c in df.columns), None)
+        float_col = next((c for c in ["유동인구","유권자 이동","floating","mobility"] if c in df.columns), None)
 
         if not total_col or not float_col:
             st.error("population.csv에서 '전체 유권자' 또는 '유동인구' 컬럼을 찾지 못했습니다.")
@@ -151,83 +151,54 @@ def render_population_box(pop_df: pd.DataFrame):
             return
 
         def _to_num(x):
-            if pd.isna(x):
-                return 0.0
-            if isinstance(x, (int, float)):
-                return float(x)
-            try:
-                return float(str(x).replace(",", "").strip())
-            except Exception:
-                return 0.0
+            if pd.isna(x): return 0.0
+            if isinstance(x,(int,float)): return float(x)
+            try: return float(str(x).replace(",","").strip())
+            except: return 0.0
 
         df[total_col] = df[total_col].apply(_to_num)
         df[float_col] = df[float_col].apply(_to_num)
 
         if code_col:
-            agg = (
-                df.groupby(code_col, dropna=False)[[total_col, float_col]]
-                .sum(min_count=1)
-                .reset_index(drop=True)
-            )
-            total_voters = float(agg[total_col].sum())
-            floating_pop = float(agg[float_col].sum())
+            agg = df.groupby(code_col, dropna=False)[[total_col,float_col]].sum(min_count=1).reset_index(drop=True)
+            total_voters = float(agg[total_col].sum()); floating_pop = float(agg[float_col].sum())
         else:
-            total_voters = float(df[total_col].sum())
-            floating_pop = float(df[float_col].sum())
+            total_voters = float(df[total_col].sum());  floating_pop = float(df[float_col].sum())
 
-        mobility_rate = floating_pop / total_voters if total_voters > 0 else float("nan")
+        mobility_rate = floating_pop/total_voters if total_voters>0 else float("nan")
 
         # KPI 카드
-        st.markdown(
-            f"""
-            <div class="k-card" style="display:flex; flex-direction:column; align-items:center; text-align:center;">
-              <div class="k-kpi-title">전체 유권자 수</div>
-              <div class="k-kpi-value">{int(round(total_voters)):,}명</div>
-              <div style="height:6px;"></div>
-              <div class="k-kpi-title">유동인구</div>
-              <div class="k-kpi-value">{int(round(floating_pop)):,}명</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"""
+        <div class="k-card" style="display:flex; flex-direction:column; align-items:center; text-align:center;">
+          <div class="k-kpi-title">전체 유권자 수</div>
+          <div class="k-kpi-value">{int(round(total_voters)):,}명</div>
+          <div style="height:6px;"></div>
+          <div class="k-kpi-title">유동인구</div>
+          <div class="k-kpi-value">{int(round(floating_pop)):,}명</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        # 유동비율 막대 (Altair v5-safe)
+        # ✅ 레이어(텍스트/룰라인) 완전 제거 → Altair v5 TypeError 원천 봉쇄
         if mobility_rate == mobility_rate:
-            bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
-            x_max = 0.10  # 10% 상한
+            bar_df = pd.DataFrame({"항목":["유동비율"], "값":[mobility_rate]})
+            x_max = 0.10  # 10%
 
-            base = (
+            chart = (
                 alt.Chart(bar_df)
-                .encode(y=alt.Y("항목:N", title=None, axis=alt.Axis(labels=False, ticks=False)))
-                .properties(height=68, padding={"top": 0, "left": 6, "right": 6, "bottom": 4})
-            )
-
-            bar = (
-                base.mark_bar(color=COLOR_BLUE)
+                .mark_bar(color=COLOR_BLUE)
                 .encode(
+                    y=alt.Y("항목:N", title=None, axis=alt.Axis(labels=False, ticks=False)),
                     x=alt.X(
                         "값:Q",
                         title=None,
                         axis=alt.Axis(format=".0%", values=[0, 0.05, x_max]),
                         scale=alt.Scale(domain=[0, x_max]),
                     ),
-                    tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")],
+                    tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
                 )
+                .properties(height=68, padding={"top": 0, "left": 6, "right": 6, "bottom": 4})
             )
-
-            txt = base.mark_text(align="left", dx=4).encode(
-                x=alt.X("값:Q"), text=alt.Text("값:Q", format=".1%")
-            )
-
-            # 같은 데이터 + 같은 y 공유 + 상수 x 생성
-            rule = (
-                base.transform_calculate(x_val="0.05")
-                .mark_rule(strokeDash=[2, 2], strokeWidth=2, opacity=0.6)
-                .encode(x=alt.X("x_val:Q", title=None))
-            )
-
-            layered = alt.layer(bar, txt, rule)
-            st.altair_chart(layered, use_container_width=True, theme=None)
+            st.altair_chart(chart, use_container_width=True, theme=None)
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -892,3 +863,4 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
