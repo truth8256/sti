@@ -76,8 +76,8 @@ def _party_chip_color(name: str) -> tuple[str,str]:
     s = (name or "").strip()
     for key,col in [
         ("더불어민주당", ("#152484","rgba(21,36,132,.08)")),
-        ("국민의힘",   ("#E61E2B","rgba(230,30,43,.10)")),
-        ("개혁신당",   ("#798897","rgba(121,136,151,.12)")),
+        ("국민의힘",    ("#E61E2B","rgba(230,30,43,.10)")),
+        ("개혁신당",    ("#798897","rgba(121,136,151,.12)")),
     ]:
         if key in s: return col
     return ("#334155","rgba(51,65,85,.08)")
@@ -132,9 +132,14 @@ def render_population_box(pop_df: pd.DataFrame):
         if mobility_rate == mobility_rate:
             bar_df = pd.DataFrame({"항목":["유동비율"], "값":[mobility_rate]})
             x_max = 0.10
+            # 🐞 BUG FIX: mark_bar와 encode 정의가 누락되어 TypeError 발생. (주석 처리된 부분 복원 및 수정)
             bar = (
-                alt.Chart(bar_df)
-                # ... (mark_bar 및 encode 부분은 그대로 유지) ...
+                alt.Chart(bar_df).mark_bar(color=COLOR_BLUE)
+                .encode(
+                    x=alt.X("값:Q", title=None, axis=alt.Axis(format=".0%", values=[0, 0.05, x_max])),
+                    y=alt.Y("항목:N", title=None, axis=alt.Axis(labels=False, ticks=False)),
+                    tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
+                )
                 .properties(height=68, padding={"top": 0, "left": 6, "right": 6, "bottom": 4})
             )
             txt = alt.Chart(bar_df).mark_text(align="left", dx=4)\
@@ -149,7 +154,7 @@ def render_population_box(pop_df: pd.DataFrame):
             # 최종 레이어링은 alt.layer() 함수를 사용
             layered = alt.layer(bar, txt, rule).resolve_scale(x='shared', y='shared')
             st.altair_chart(layered, use_container_width=True)
-    
+        
         st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================
@@ -179,7 +184,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
     labels, values = [Y,M,O], [y,m,o]
     ratios01 = [v/tot for v in values]; ratios100 = [r*100 for r in ratios01]
 
-    # 🌟🌟🌟 수정된 부분 시작 🌟🌟🌟
+    # 🌟🌟🌟 수정된 부분 (두 번째 수정 권장 사항) 🌟🌟🌟
     # 라디오 버튼을 먼저 생성하고 결과를 focus에 저장 (차트보다 위에 위치하면 선택이 바로 반영됨)
     focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
     # 🌟🌟🌟 수정된 부분 끝 🌟🌟🌟
@@ -368,10 +373,10 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     line = alt.Chart(long_df).mark_line(point=False, strokeWidth=3).encode(
         x=alt.X("선거명_표시:N", scale=alt.Scale(domain=order),
-                axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
+                  axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
         y=alt.Y("득표율:Q", title="득표율(%)"),
         color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors),
-                        legend=alt.Legend(title=None, orient="top"))
+                              legend=alt.Legend(title=None, orient="top"))
     )
     hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
         x="선거명_표시:N", y="득표율:Q", color=alt.Color("계열:N", legend=None)
@@ -381,8 +386,8 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         y="득표율:Q", color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors), legend=None),
         opacity=alt.condition(sel, alt.value(1), alt.value(0)),
         tooltip=[alt.Tooltip("선거명_표시:N", title="선거명"),
-                 alt.Tooltip("계열:N", title="계열"),
-                 alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
+                  alt.Tooltip("계열:N", title="계열"),
+                  alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
     ).transform_filter(sel)
 
     # 연도 밴드 (padding 최소화)
@@ -454,7 +459,7 @@ def render_results_2024_card(res_row: pd.DataFrame, df_24: pd.DataFrame=None, co
       .grid-24 {{ display:grid; grid-template-columns: repeat(3,1fr); align-items:center; gap:0; margin-top:4px; }}
       @media (max-width: 720px) {{ .grid-24 {{ grid-template-columns: repeat(2,1fr); gap:8px; }} }}
       .chip {{ display:inline-flex; flex-direction:column; align-items:center; padding:6px 10px; border-radius:14px;
-               font-weight:600; font-size:.95rem; line-height:1.2; }}
+              font-weight:600; font-size:.95rem; line-height:1.2; }}
       .kpi {{ font-weight:700; font-size:1.02rem; margin-top:8px; font-variant-numeric:tabular-nums; color:{COLOR_TEXT_DARK}; }}
       .cell {{ padding:8px 8px; text-align:center; min-height:80px; }}
       .divider {{ border-left:1px solid #EEF2F7; }}
@@ -560,7 +565,7 @@ def render_prg_party_box(prg_row: pd.DataFrame|None, pop_row: pd.DataFrame|None=
 
         df = prg_row.copy(); df.columns = [_norm(c) for c in df.columns]; r = df.iloc[0]
         col_strength = "진보정당 득표력" if "진보정당 득표력" in df.columns else next((c for c in df.columns if "진보정당득표력" in c.replace(" ","")), None)
-        col_members  = "진보당 당원수"   if "진보당 당원수"   in df.columns else next((c for c in df.columns if "진보당당원수"   in c.replace(" ","")), None)
+        col_members  = "진보당 당원수"    if "진보당 당원수"    in df.columns else next((c for c in df.columns if "진보당당원수"    in c.replace(" ","")), None)
         strength = _to_pct_float(r.get(col_strength)) if col_strength else None
         members  = _to_int(r.get(col_members)) if col_members else None
 
@@ -591,7 +596,7 @@ def render_prg_party_box(prg_row: pd.DataFrame|None, pop_row: pd.DataFrame|None=
 # 레이아웃
 # =============================
 def render_region_detail_layout(df_pop: pd.DataFrame|None=None, df_trend: pd.DataFrame|None=None,
-                                df_24: pd.DataFrame|None=None, df_cur: pd.DataFrame|None=None, df_prg: pd.DataFrame|None=None):
+                                 df_24: pd.DataFrame|None=None, df_cur: pd.DataFrame|None=None, df_prg: pd.DataFrame|None=None):
     _inject_global_css()
     st.markdown("### 👥 인구 정보")
     left, right = st.columns([1,5])
