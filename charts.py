@@ -395,6 +395,116 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
 
     st.altair_chart(arcs_extra + arcs_main + highlight + center_big + center_small, use_container_width=False)
 
+# 성비
+
+def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 320):
+    """
+    population.csv의 연령×성별 인원(명) 컬럼을 합산해서
+    연령대별 남/녀 가로 막대 차트로 렌더링.
+
+    필요 컬럼(명 단위):
+      20대 남성, 20대 여성, 30대 남성, 30대 여성, 40대 남성, 40대 여성,
+      50대 남성, 50대 여성, 60대 남성, 60대 여성, 70대 이상 남성, 70대 이상 여성
+    """
+    import numpy as np
+    import altair as alt
+
+    if pop_df is None or pop_df.empty:
+        st.info("성비 데이터를 표시할 수 없습니다. (population.csv 없음)")
+        return
+
+    df = pop_df.copy()
+    df.columns = [str(c).strip().replace("\n", "").replace("\r", "") for c in df.columns]
+
+    # 기대하는 컬럼들
+    age_buckets = ["20대", "30대", "40대", "50대", "60대", "70대 이상"]
+    col_pairs = [(f"{a} 남성", f"{a} 여성") for a in age_buckets]
+    expect_cols = [c for pair in col_pairs for c in pair]
+
+    # 컬럼 존재 확인
+    missing = [c for c in expect_cols if c not in df.columns]
+    if missing:
+        st.error("population.csv에 다음 컬럼이 필요합니다: " + ", ".join(missing))
+        return
+
+    # 숫자화 + 합계(동 → 구)
+    def _to_num(x):
+        if pd.isna(x):
+            return np.nan
+        if isinstance(x, (int, float)):
+            return float(x)
+        s = str(x).strip().replace(",", "")
+        try:
+            return float(s)
+        except Exception:
+            return np.nan
+
+    df_num = df[expect_cols].applymap(_to_num).fillna(0.0)
+    sums = df_num.sum(axis=0)  # 각 컬럼 합
+
+    # tidy 변환: 연령대, 성별, 명, 점유율(%)
+    tidy_rows = []
+    for a in age_buckets:
+        m_col, f_col = f"{a} 남성", f"{a} 여성"
+        m_val, f_val = float(sums[m_col]), float(sums[f_col])
+        total = m_val + f_val
+        if total <= 0:
+            m_pct = f_pct = 0.0
+        else:
+            m_pct = m_val / total * 100.0
+            f_pct = f_val / total * 100.0
+        tidy_rows.append({"연령대": a, "성별": "남성", "명": m_val, "점유율": m_pct})
+        tidy_rows.append({"연령대": a, "성별": "여성", "명": f_val, "점유율": f_pct})
+
+    tidy = pd.DataFrame(tidy_rows)
+
+    # 전체가 0이면 안내
+    if tidy["명"].sum() <= 0:
+        st.info("성비 데이터(연령×성별)가 모두 0입니다.")
+        return
+
+    # 색상: 남성/여성 구분
+    color_domain = ["남성", "여성"]
+    color_range = ["#3B82F6", "#EF4444"]  # 파랑/빨강
+
+    # 가로 막대 (연령대별로 남/녀 나란히)
+    chart = (
+        alt.Chart(tidy)
+        .mark_bar(size=14)
+        .encode(
+            y=alt.Y("연령대:N", sort=age_buckets, title=None, axis=alt.Axis(labelLimit=80)),
+            x=alt.X("명:Q", title="인원(명)", axis=alt.Axis(format=",.0f")),
+            color=alt.Color("성별:N", scale=alt.Scale(domain=color_domain, range=color_range),
+                            legend=alt.Legend(title=None, orient="top")),
+            tooltip=[
+                alt.Tooltip("연령대:N", title="연령대"),
+                alt.Tooltip("성별:N", title="성별"),
+                alt.Tooltip("명:Q", title="인원", format=",.0f"),
+                alt.Tooltip("점유율:Q", title="해당 연령대 내 비중", format=".1f")
+            ],
+            order=alt.Order("성별", sort="ascending")
+        )
+        .properties(height=max(160, box_height_px - 72))
+    )
+
+    # 막대 끝 수치 라벨(명)
+    text = (
+        alt.Chart(tidy)
+        .mark_text(align="left", dx=4, baseline="middle")
+        .encode(
+            y=alt.Y("연령대:N", sort=age_buckets),
+            x=alt.X("명:Q"),
+            text=alt.Text("명:Q", format=",.0f"),
+            detail="성별:N",
+            color=alt.value("#334155")
+        )
+    )
+
+    st.altair_chart(chart + text, use_container_width=True)
+
+
+
+
 # 정당성향별 득표추이
 def render_vote_trend_chart(ts: pd.DataFrame):
     if ts is None or ts.empty:
@@ -859,11 +969,11 @@ def render_region_detail_layout(
     with top_right:
         subcol1, subcol2 = st.columns(2)
         with subcol1.container(border=True):
-            st.markdown("#### 연령 구성")
+            st.markdown("## 연령 구성")
             render_age_highlight_chart(df_pop, box_height_px=320)
         with subcol2.container(border=True, height="stretch"):
-            st.markdown("#### 성비")
-            st.info("가로 막대차트 자리")
+            st.markdown("## 성비")
+            render_sex_ratio_bar(df_pop, box_height_px=320)
 
     # ============ 중간: 득표 추이(실제 차트 호출) ============ #
     st.markdown("### 📈 정당성향별 득표추이")
@@ -878,6 +988,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
