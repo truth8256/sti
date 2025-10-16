@@ -154,7 +154,12 @@ def render_population_box(pop_df: pd.DataFrame):
             rule = (
                 base.transform_calculate(x_val="0.05")
                     .mark_rule(strokeDash=[2,2], strokeWidth=2, opacity=0.6)
-                    .encode(x=alt.X("x_val:Q", title=None))
+                    .encode(
+                        x=alt.X("x_val:Q", title=None),
+                        # 🔧 Altair v5 호환: y/y2를 '픽셀 값'으로 지정해 레이어 유효성 보장
+                        y=alt.value(0),
+                        y2=alt.value(68)  # base.properties(height=68)과 동일하게 맞춤
+                    )
             )
 
             layered = alt.layer(bar, txt, rule).resolve_scale(x='shared', y='shared')
@@ -629,5 +634,6 @@ def render_region_detail_layout(df_pop: pd.DataFrame|None=None, df_trend: pd.Dat
     with c1: render_results_2024_card(df_24)
     with c2: render_incumbent_card(df_cur)
     with c3: render_prg_party_box(df_prg, df_pop)
+
 
 
