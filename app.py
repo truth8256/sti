@@ -285,14 +285,26 @@ elif menu == "지역별 분석":
 # Page: 데이터 설명
 # -----------------------------
 elif menu == "데이터 설명":
-    st.title("🗳️ 지역구 선정 1단계 조사 결과")
+    # 좌: 큰 제목 / 우: 앱 제목 (오른쪽 상단 고정)
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        st.title("📘 지표별 구성 및 해설")
+    with c2:
+        st.markdown(
+            """
+            <div style="text-align:right; font-weight:700; font-size:1.05rem;">
+                🗳️ 지역구 선정 1단계 조사 결과
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     st.caption("에스티아이")
 
     # -----------------------------
     # 지표별 구성 및 해설 (외부 MD 파일 렌더)
     # -----------------------------
     st.divider()
-    st.subheader("📘 지표별 구성 및 해설")
 
     md_candidates = [
         Path("sti") / "지표별 구성 및 해설.md",
