@@ -118,13 +118,12 @@ def render_population_box(pop_df: pd.DataFrame):
 
         mobility_rate = floating_pop / total_voters if total_voters > 0 else float("nan")
 
-        c1, c2 = st.columns([1, 1.4])
+        c1 = st.columns([1])
         with c1:
             st.markdown("**전체 유권자 수**")
             st.markdown(f"{int(round(total_voters)):,}명")
             st.markdown("**유동인구**")
             st.markdown(f"{int(round(floating_pop)):,}명")
-        with c2:
             if mobility_rate == mobility_rate:
                 bar_df = pd.DataFrame({"항목": ["유동비율"], "값": [mobility_rate]})
                 x_max = max(0.3, float(mobility_rate) * 1.3)
@@ -736,7 +735,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
 
     with right_col:
         # 오른쪽 내부: 성비를 더 넓게
-        subcol_age, subcol_sex = st.columns([2, 3])
+        subcol_age, subcol_sex = st.columns([1.5, 3.5])
         with subcol_age.container(border=True):
             st.markdown("**연령 구성**")
             render_age_highlight_chart(df_pop, box_height_px=320)
@@ -755,6 +754,7 @@ def render_region_detail_layout(df_pop: pd.DataFrame | None = None, df_trend: pd
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
