@@ -208,24 +208,27 @@ def render_population_box(pop_df: pd.DataFrame):
 
 
 # 연령 구성
-def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320):
+def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320, width_px: int = 260):
     """
-    안정 버전 v1.4
+    안정 버전 v1.6
     - 입력(모두 '명'): 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상), 전체 유권자 수
     - 60~64세 = 전체 - (청년+중년+고령) → 회색 조각(항상 포함, 버튼/범례 제외)
-    - 강조: st.radio (Streamlit)로 제어. Altair selection 의존 X.
-    - 하이라이트는 별도 df_high로 그려서 어긋남/사라짐 방지.
+    - 강조: st.radio로 제어(Altair selection 미사용). 어떤 선택에서도 차트가 '사라지지 않도록' 레이어 분리 + 투명도 처리.
+    - 하이라이트: 동일한 데이터·정렬·반지름·패딩을 공유하도록 강제(겉도는 테두리 방지).
     - 가운데 요약: 전체(합계만), 특정(퍼센트 크게 + 명 작게)
     """
     import numpy as np
+    import pandas as pd
     import altair as alt
+    import streamlit as st
 
+    # ---------- 기본 검증 ----------
     if pop_df is None or pop_df.empty:
         st.info("연령 구성 데이터가 없습니다.")
         return
-    df = _norm_cols(pop_df.copy())
+    df = pop_df.copy()
+    df.columns = [str(c).strip().replace("\n", "").replace("\r", "") for c in df.columns]
 
-    # --- 컬럼명 ---
     Y_COL = "청년층(18~39세)"
     M_COL = "중년층(40~59세)"
     O_COL = "고령층(65세 이상)"
@@ -240,48 +243,68 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # --- 숫자화 + NaN→0 ---
+    # ---------- 숫자화 ----------
     for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
             errors="coerce",
         ).fillna(0)
 
-    # --- 합계 ---
+    # ---------- 합계 계산 ----------
     y = float(df[Y_COL].sum())
     m = float(df[M_COL].sum())
     o = float(df[O_COL].sum())
     total_v = float(df[total_col].sum())
+
     if total_v <= 0:
         st.info("전체 유권자 수(분모)가 0입니다.")
         return
 
-    # --- 60~64 계산 + 보정 ---
+    # 60~64 계산 (수치 오차 보정 포함)
     a6064 = total_v - (y + m + o)
     if abs(a6064) <= 0.5:
         a6064 = 0.0
     a6064 = max(0.0, min(a6064, total_v))
+
     denom = total_v
 
-    # --- 데이터 테이블 ---
     labels_main = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
     vals_main   = [y, m, o]
     labels_all  = labels_main + ["60~64세"]
     vals_all    = vals_main + [a6064]
-    ratios_all  = [(v / denom * 100.0) for v in vals_all]
+    ratios_all  = [(v / denom * 100.0) if denom > 0 else 0.0 for v in vals_all]
 
-    # 강조 대상 선택
-    focus = st.radio("강조", ["전체"] + labels_main, index=0, horizontal=True, label_visibility="collapsed")
+    # ---------- UI: 강조 선택 ----------
+    focus = st.radio(
+        "강조",
+        ["전체"] + labels_main,
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
 
-    # 공통 스타일(세 레이어 모두 동일!)
-    width = 280
-    height = max(200, box_height_px - 56)
+    # ---------- 공통 스타일(세 레이어 동일) ----------
+    width  = max(220, int(width_px))
+    height = max(200, int(box_height_px) - 56)
     cx, cy = width / 2, height / 2
-    inner_r = 70
-    pad_ang = 0.003  # 세 레이어 모두 동일
+
+    outer_r = int(min(width, height) / 2) - 4
+    inner_r = max(50, min(outer_r - 40, 90))   # 안전 범위 내에서 자동 조정
+    pad_ang = 0.003
+    corner  = 0
     order_field = "순서:Q"
 
-    # 기본 색
+    mark_common = dict(
+        innerRadius=inner_r,
+        outerRadius=outer_r,          # ★ 모든 레이어 동일한 반지름 강제
+        padAngle=pad_ang,             # ★ 패딩 동일
+        cornerRadius=corner,
+        strokeJoin="round",
+        startAngle=0,                 # ★ 시작/끝 각도 고정 (정렬 불일치 방지)
+        endAngle=6.283185307179586,   #   (2π)
+    )
+
+    # ---------- 색상 ----------
     color_map = {
         "청년층(18~39세)": "#82B1FF",
         "중년층(40~59세)": "#4D8EFF",
@@ -291,66 +314,71 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     color_domain = labels_all
     color_range  = [color_map[k] for k in color_domain]
 
-    # 표 데이터(메인과 회색 분리)
+    # ---------- 데이터프레임 ----------
     df_main = pd.DataFrame({
         "연령": labels_main,
         "명": vals_main,
-        "비율": [round(v, 6) for v in ratios_all[:3]],
+        "비율": [round(r, 6) for r in ratios_all[:3]],
         "순서": [0, 1, 2],
     })
+
     df_extra = pd.DataFrame({
         "연령": ["60~64세"],
         "명": [a6064],
         "비율": [round(ratios_all[3], 6)],
         "순서": [3],
     })
-    # 하이라이트 전용 데이터(선택이 전체가 아니면 그 행만)
-    if focus != "전체":
-        i = labels_main.index(focus)
-        df_high = df_main.iloc[[i]].copy()
-    else:
-        df_high = df_main.iloc[0:0].copy()  # 빈 df → 레이어가 그려지지 않음
 
-    base_main  = alt.Chart(df_main).properties(width=width, height=height)
+    # 투명도(강조 외 조각은 흐리게; 어떤 경우에도 0이 아닌 값 유지 → 사라짐 방지)
+    df_main_op = df_main.copy()
+    if focus == "전체":
+        df_main_op["투명도"] = 1.0
+    else:
+        df_main_op["투명도"] = df_main_op["연령"].eq(focus).map({True: 1.0, False: 0.35})
+
+    # 하이라이트 전용 (선택이 전체면 빈 DF → 레이어가 그려지지 않음)
+    df_high = df_main.loc[df_main["연령"].eq(focus)] if focus != "전체" else df_main.iloc[0:0]
+
+    base_main  = alt.Chart(df_main_op).properties(width=width, height=height)
     base_extra = alt.Chart(df_extra).properties(width=width, height=height)
     base_high  = alt.Chart(df_high).properties(width=width, height=height)
 
-    # 회색(60~64) — 항상 표시
+    # ---------- 레이어 1: 60~64 (항상 표시) ----------
     arcs_extra = (
         base_extra
-        .mark_arc(innerRadius=inner_r, stroke="white", strokeWidth=1, padAngle=pad_ang, strokeJoin="round")
+        .mark_arc(**mark_common, stroke="white", strokeWidth=1)
         .encode(
             theta=alt.Theta("비율:Q"),
             color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
             order=alt.Order(order_field, sort="ascending"),
-            tooltip=[alt.Tooltip("연령:N"), alt.Tooltip("명:Q", format=",.0f"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
+            tooltip=[alt.Tooltip("연령:N"), alt.Tooltip("명:Q", format=",.0f"),
+                     alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
         )
     )
 
-    # 메인 3조각 — 강조는 투명도로만 제어(사라지지 않게)
-    df_main_opacity = df_main.copy()
-    if focus == "전체":
-        df_main_opacity["투명도"] = 1.0
-    else:
-        df_main_opacity["투명도"] = df_main_opacity["연령"].eq(focus).map({True: 1.0, False: 0.25})
-
+    # ---------- 레이어 2: 메인 3조각 ----------
     arcs_main = (
-        alt.Chart(df_main_opacity).properties(width=width, height=height)
-        .mark_arc(innerRadius=inner_r, stroke="white", strokeWidth=1, padAngle=pad_ang, strokeJoin="round")
+        base_main
+        .mark_arc(**mark_common, stroke="white", strokeWidth=1)
         .encode(
             theta=alt.Theta("비율:Q"),
-            color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range),
-                            legend=alt.Legend(title=None, orient="top", values=labels_main)),
-            opacity="투명도:Q",
+            color=alt.Color(
+                "연령:N",
+                scale=alt.Scale(domain=color_domain, range=color_range),
+                legend=alt.Legend(title=None, orient="top", values=labels_main, labelLimit=220)
+            ),
+            opacity=alt.Opacity("투명도:Q", scale=None),
             order=alt.Order(order_field, sort="ascending"),
-            tooltip=[alt.Tooltip("연령:N"), alt.Tooltip("명:Q", format=",.0f"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
+            tooltip=[alt.Tooltip("연령:N"), alt.Tooltip("명:Q", format=",.0f"),
+                     alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
         )
     )
 
-    # 하이라이트(선택 조각만 동일한 채움 + 검은 외곽)
+    # ---------- 레이어 3: 하이라이트(테두리만) ----------
+    # fillOpacity=0 으로 완전 투명 채움 + 검은 테두리 → '겉도는' 현상을 막기 위해 반지름/패딩/각도 모두 동일
     highlight = (
         base_high
-        .mark_arc(innerRadius=inner_r, stroke="#111827", strokeWidth=2, padAngle=pad_ang, strokeJoin="round")
+        .mark_arc(**mark_common, stroke="#111827", strokeWidth=2.5, fillOpacity=0.0001)
         .encode(
             theta=alt.Theta("비율:Q"),
             color=alt.Color("연령:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
@@ -358,24 +386,28 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         )
     )
 
-    # 가운데 요약
+    # ---------- 가운데 요약 ----------
     if focus == "전체":
         big, small = f"{int(round(denom)):,}", ""
     else:
         i = labels_main.index(focus)
         big, small = f"{ratios_all[i]:.1f}%", f"{int(round(vals_main[i])):,}명"
+
     center_big = (
         alt.Chart(pd.DataFrame({"x":[0]}))
         .mark_text(fontSize=20, fontWeight="bold", align="center", baseline="middle", color="#0f172a")
-        .encode(x=alt.value(cx), y=alt.value(cy-6), text=alt.value(big))
+        .encode(x=alt.value(cx), y=alt.value(cy - 6), text=alt.value(big))
     )
     center_small = (
         alt.Chart(pd.DataFrame({"x":[0]}))
         .mark_text(fontSize=12, align="center", baseline="middle", color="#475569")
-        .encode(x=alt.value(cx), y=alt.value(cy+14), text=alt.value(small))
+        .encode(x=alt.value(cx), y=alt.value(cy + 14), text=alt.value(small))
     )
 
-    st.altair_chart(arcs_extra + arcs_main + highlight + center_big + center_small, use_container_width=False)
+    st.altair_chart(
+        arcs_extra + arcs_main + highlight + center_big + center_small,
+        use_container_width=False
+    )
 
 # 정당성향별 득표추이
 def render_vote_trend_chart(ts: pd.DataFrame):
@@ -860,6 +892,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
