@@ -661,101 +661,63 @@ def render_incumbent_card(cur_row: pd.DataFrame | None):
 # =============================
 # 진보당 현황 (개선 시각화)
 # =============================
-def render_prg_party_box(prg_row: pd.DataFrame | None, pop_row: pd.DataFrame | None = None, *, code: str | int | None = None, region: str | None = None, debug: bool = False):
-    """
-    [REQ-9] 대시보드형 요약:
-      - KPI 2개: 진보 득표력, 당원수(있을 때)
-      - 막대 게이지: 진보 득표력 (0~40% 스케일, 상한 40% 고정으로 상대 감 지각)
-      - 보조지표: 당원/유권자(천명당) 표시 (가능할 때)
-    """
-    def _norm(s: str) -> str:
-        s = str(s).replace("\n", " ").replace("\r", " ").strip()
-        return " ".join(s.split())
-
+def render_prg_party_box(prg_row: pd.DataFrame|None, pop_row: pd.DataFrame|None=None, *, code: str|int|None=None, region: str|None=None, debug: bool=False):
+    def _norm(s:str)->str: return " ".join(str(s).replace("\n"," ").replace("\r"," ").strip().split())
     with st.container(border=True):
         st.markdown("**진보당 현황**")
-        st.markdown("<div style='padding-top:4px;'></div>", unsafe_allow_html=True)
-
-        # 안전 로딩
         if prg_row is None or prg_row.empty:
             df_all = _load_index_df()
             if df_all is None or df_all.empty:
-                st.info("지표 소스(index_sample.csv)를 찾을 수 없습니다. (sti/data/index_sample.csv 경로 확인)")
-                return
+                st.info("지표 소스(index_sample.csv)를 찾을 수 없습니다."); return
             df_all.columns = [_norm(c) for c in df_all.columns]
             code_col = "code" if "code" in df_all.columns else None
             name_col = "region" if "region" in df_all.columns else None
-
             prg_row = pd.DataFrame()
             if code is not None and code_col:
-                key = _norm(code); prg_row = df_all[df_all[code_col].astype(str).map(_norm) == key].head(1)
+                key = _norm(code); prg_row = df_all[df_all[code_col].astype(str).map(_norm)==key].head(1)
             if (prg_row is None or prg_row.empty) and region and name_col:
                 key = _norm(region)
-                prg_row = df_all[df_all[name_col].astype(str).map(_norm) == key].head(1)
+                prg_row = df_all[df_all[name_col].astype(str).map(_norm)==key].head(1)
                 if prg_row.empty:
                     prg_row = df_all[df_all[name_col].astype(str).str.contains(key, na=False)].head(1)
-            if prg_row is None or prg_row.empty:
-                prg_row = df_all.head(1)
+            if prg_row is None or prg_row.empty: prg_row = df_all.head(1)
 
-        df = prg_row.copy()
-        df.columns = [_norm(c) for c in df.columns]
-        r = df.iloc[0]
+        df = prg_row.copy(); df.columns = [_norm(c) for c in df.columns]; r = df.iloc[0]
 
-        # 컬럼 탐색
-        col_strength = "진보정당 득표력" if "진보정당 득표력" in df.columns else next((c for c in df.columns if "진보정당득표력" in c.replace(" ", "")), None)
-        col_members  = "진보당 당원수"   if "진보당 당원수"   in df.columns else next((c for c in df.columns if "진보당당원수"   in c.replace(" ", "")), None)
+        def find_col_exact_or_compact(df, prefer_name, compact_key):
+            if prefer_name in df.columns: return prefer_name
+            for c in df.columns:
+                if compact_key in str(c).replace(" ",""): return c
+            return None
 
-        strength = _to_pct_float(r.get(col_strength)) if col_strength else None  # % 단위 값으로 가정
+        col_strength = find_col_exact_or_compact(df, "진보정당 득표력", "진보정당득표력")
+        col_members  = find_col_exact_or_compact(df, "진보당 당원수", "진보당당원수")
+        strength = _to_pct_float(r.get(col_strength)) if col_strength else None
         members  = _to_int(r.get(col_members)) if col_members else None
 
-        # 게이지 막대용 데이터 (0~40%) 고정 스케일
-        s_val = (strength if isinstance(strength,(int,float)) else None)
-        s01 = (s_val/100.0) if s_val is not None else None
-        gauge_df = pd.DataFrame({"항목":["진보 득표력"], "값":[s01 if s01 is not None else 0.0]})
-
-        left_html = f"""
-        <div style="display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:12px; margin-top:2px;">
-          <div style="text-align:center; padding:6px 4px;">
-            <div style="color:{COLOR_TEXT_MID}; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보 득표력</div>
-            <div style="font-weight:800; font-size:1.20rem; color:{COLOR_TEXT_DARK}; letter-spacing:-0.2px;">
-              {_fmt_pct(s_val) if s_val is not None else "N/A"}
-            </div>
-          </div>
-          <div style="text-align:center; padding:6px 4px;">
-            <div style="color:{COLOR_TEXT_MID}; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보당 당원수</div>
-            <div style="font-weight:800; font-size:1.20rem; color:{COLOR_TEXT_DARK}; letter-spacing:-0.2px;">
-              {(f"{members:,}명" if members is not None else "N/A")}
-            </div>
-          </div>
-        </div>
-        """
         from streamlit.components.v1 import html as html_component
-        html_component(left_html, height=90, scrolling=False)
+        html_component(f"""
+        <div class="k-card" style="display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:12px;">
+          <div style="text-align:center;"><div class="k-kpi-title">진보 득표력</div><div class="k-kpi-value">{_fmt_pct(strength) if strength is not None else "N/A"}</div></div>
+          <div style="text-align:center;"><div class="k-kpi-title">진보당 당원수</div><div class="k-kpi-value">{(f"{members:,}명" if members is not None else "N/A")}</div></div>
+        </div>
+        """, height=86, scrolling=False)
 
-        # 게이지 막대 (0~40%)
-        if s01 is not None:
-            g = (
-                alt.Chart(gauge_df)
+        if strength is not None:
+            s01 = strength/100.0
+            gdf = pd.DataFrame({"항목":["진보 득표력"], "값":[s01]})
+            chart = (
+                alt.Chart(gdf)
                 .mark_bar()
                 .encode(
-                    x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0, 0.40])),
+                    x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0,0.40])),
                     y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
                     color=alt.value(COLOR_BLUE),
                     tooltip=[alt.Tooltip("값:Q", title="진보 득표력", format=".1%")],
                 )
-                .properties(height=70)
+                .properties(height=64, padding={"top":0,"left":6,"right":6,"bottom":2})
             )
-            g_text = (
-                alt.Chart(gauge_df)
-                .mark_text(align="left", dx=4)
-                .encode(
-                    x=alt.X("값:Q", scale=alt.Scale(domain=[0, 0.40])),
-                    y=alt.Y("항목:N"),
-                    text=alt.Text("값:Q", format=".1%"),
-                )
-            )
-            st.altair_chart(g + g_text, use_container_width=True)
-            st.caption("진보 득표력 게이지 (스케일 0–40%)")
+            st.altair_chart(chart, use_container_width=True, theme=None)
         else:
             st.info("진보 득표력 지표가 없습니다.")
 
@@ -804,6 +766,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
