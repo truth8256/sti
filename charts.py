@@ -132,7 +132,8 @@ def render_population_box(pop_df: pd.DataFrame):
         if mobility_rate == mobility_rate:
             bar_df = pd.DataFrame({"항목":["유동비율"], "값":[mobility_rate]})
             x_max = 0.10
-            # 🐞 BUG FIX: mark_bar와 encode 정의가 누락되어 TypeError 발생. (주석 처리된 부분 복원 및 수정)
+            
+            # 🌟🌟🌟 오류 수정 부분: mark_bar와 encode 정의 복원 🌟🌟🌟
             bar = (
                 alt.Chart(bar_df).mark_bar(color=COLOR_BLUE)
                 .encode(
@@ -184,8 +185,8 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
     labels, values = [Y,M,O], [y,m,o]
     ratios01 = [v/tot for v in values]; ratios100 = [r*100 for r in ratios01]
 
-    # 🌟🌟🌟 수정된 부분 (두 번째 수정 권장 사항) 🌟🌟🌟
-    # 라디오 버튼을 먼저 생성하고 결과를 focus에 저장 (차트보다 위에 위치하면 선택이 바로 반영됨)
+    # 🌟🌟🌟 두 번째 수정 권장 사항 반영 🌟🌟🌟
+    # 라디오 버튼을 먼저 생성하고 결과를 focus에 저장 (차트보다 위에 위치하여 즉시 업데이트)
     focus = st.radio("강조", labels, index=0, horizontal=True, label_visibility="collapsed")
     # 🌟🌟🌟 수정된 부분 끝 🌟🌟🌟
 
