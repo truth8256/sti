@@ -210,13 +210,11 @@ def render_population_box(pop_df: pd.DataFrame):
 # 연령 구성
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320):
     """
-    입력(모두 '명'):
-      - 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상)
-      - 전체 유권자 수
+    입력(모두 명):
+      - 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상), 전체 유권자 수
     60~64세 = 전체 - (청년+중년+고령)  → 회색 조각(범례/강조 제외)
     분모 = 전체 유권자 수
-    같은 지역구코드끼리 합산
-    강조는 Streamlit 라디오로 제어(Altair selection 미사용)
+    같은 지역구코드끼리 합산. 강조는 Streamlit 라디오로 제어(Altair selection 미사용)
     """
     import numpy as np
     import altair as alt
@@ -231,47 +229,25 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     M_COL = "중년층(40~59세)"
     O_COL = "고령층(65세 이상)"
     TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
-    CODE_CANDIDATES  = ["지역구코드","선거구코드","코드","code","CODE"]
 
     for c in (Y_COL, M_COL, O_COL):
         if c not in df.columns:
             st.error(f"필수 컬럼이 없습니다: {c}")
             return
-
     total_col = next((c for c in TOTAL_CANDIDATES if c in df.columns), None)
     if total_col is None:
         st.error("분모가 될 '전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    code_col = next((c for c in CODE_CANDIDATES if c in df.columns), None)
-
-    # --- 같은 지역구끼리 합산 (안전 버전: 숫자 변환 + 0 채움 + 전체 합) ---
-    Y_COL = "청년층(18~39세)"
-    M_COL = "중년층(40~59세)"
-    O_COL = "고령층(65세 이상)"
-    TOTAL_CANDIDATES = ["전체 유권자 수", "전체 유권자", "전체유권자", "total_voters"]
-    CODE_CANDIDATES  = ["지역구코드","선거구코드","코드","code","CODE"]
-
-    for c in (Y_COL, M_COL, O_COL):
-        if c not in df.columns:
-            st.error(f"필수 컬럼이 없습니다: {c}")
-            return
-
-    total_col = next((c for c in TOTAL_CANDIDATES if c in df.columns), None)
-    if total_col is None:
-        st.error("분모가 될 '전체 유권자 수' 컬럼을 찾지 못했습니다.")
-        return
-
-    # ① 숫자화: 쉼표/공백 제거 → numeric 강제 → NaN은 0
+    # --- 숫자화(열 전체) + NaN→0 ---
     cols_num = [Y_COL, M_COL, O_COL, total_col]
     for c in cols_num:
-        df[c] = (
-            pd.to_numeric(
-                df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
-                errors="coerce"
-            ).fillna(0)
-        )
+        df[c] = pd.to_numeric(
+            df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
+            errors="coerce"
+        ).fillna(0)
 
+    # --- 같은 지역구끼리 합산하든, 이미 필터되어 있든 '전체 합'으로 안전 처리 ---
     y = float(df[Y_COL].sum())
     m = float(df[M_COL].sum())
     o = float(df[O_COL].sum())
@@ -281,16 +257,21 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         st.info("전체 유권자 수(분모)가 0입니다.")
         return
 
-    # ③ 60~64 = 전체 − (청년+중년+고령), 반올림 오차 보정 및 클리핑
+    # --- 60~64 계산 + 보정 ---
     a6064 = total_v - (y + m + o)
-    # 소수점 오차 보정(±0.5명 허용), 범위 클리핑
     if abs(a6064) <= 0.5:
         a6064 = 0.0
     a6064 = max(0.0, min(a6064, total_v))
-
     denom = total_v
 
-    # --- 라디오(강조) — Altair selection 대신 Streamlit 사용 ---
+    # --- 라벨/값(먼저 정의!) ---
+    labels_main = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
+    vals_main   = [y, m, o]
+    labels_all  = labels_main + ["60~64세"]
+    vals_all    = vals_main + [a6064]
+    ratios_all  = [(v / denom * 100.0) if denom > 0 else 0.0 for v in vals_all]
+
+    # --- 상단 UI + 라디오(강조 제어) ---
     _col1, _col2 = st.columns([1, 1])
     with _col2:
         focus = st.radio(
@@ -320,17 +301,12 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     df_plot = pd.DataFrame({
         "계층": labels_all,
         "명": vals_all,
-        "비율": [round(x, 6) for x in ratios_all],  # 아주 작은 수의 반올림 이슈 방지
-        "is_extra": [False, False, False, True],
-        "강조": [emph_flag(nm) and nm != "60~64세" for nm in labels_all],  # 60~64는 강조 제외
+        "비율": [round(x, 6) for x in ratios_all],
+        "is_extra": [False, False, False, True],  # 마지막이 60~64세
+        "강조": [emph_flag(nm) and nm != "60~64세" for nm in labels_all],
     })
 
-    # 모든 비율이 0이면(데이터 문제) 안내
-    if float(np.nansum(df_plot["비율"].fillna(0.0))) <= 0.0:
-        st.info("표시할 비율이 없습니다. (값이 전부 0)")
-        return
-
-    # 색상
+    # --- 차트 ---
     color_map = {
         "청년층(18~39세)": "#86B6F6",
         "중년층(40~59세)": "#5AA9E6",
@@ -342,22 +318,15 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
 
     base = alt.Chart(df_plot).properties(width=280, height=max(180, box_height_px - 56))
 
-    # 60~64(회색) — 항상 표시
     arcs_extra = (
         base.transform_filter("datum.is_extra == true")
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
         .encode(
             theta=alt.Theta("비율:Q"),
             color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
-            tooltip=[
-                alt.Tooltip("계층:N"),
-                alt.Tooltip("명:Q", format=",.0f"),
-                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
-            ],
+            tooltip=[alt.Tooltip("계층:N"), alt.Tooltip("명:Q", format=",.0f"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
         )
     )
-
-    # 메인 3조각 — 강조(투명도), 외곽선
     arcs_main = (
         base.transform_filter("datum.is_extra == false")
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1)
@@ -366,26 +335,16 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
             color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range),
                             legend=alt.Legend(title=None, orient="top", values=labels_main)),
             opacity=alt.condition("datum.강조 == true", alt.value(1.0), alt.value(0.25)),
-            tooltip=[
-                alt.Tooltip("계층:N"),
-                alt.Tooltip("명:Q", format=",.0f"),
-                alt.Tooltip("비율:Q", format=".1f", title="비율(%)"),
-            ],
+            tooltip=[alt.Tooltip("계층:N"), alt.Tooltip("명:Q", format=",.0f"), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")],
         )
     )
-
     highlight = (
         base.transform_filter("datum.is_extra == false && datum.강조 == true")
         .mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2, fillOpacity=0)
-        .encode(
-            theta="비율:Q",
-            color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None),
-        )
+        .encode(theta="비율:Q", color=alt.Color("계층:N", scale=alt.Scale(domain=color_domain, range=color_range), legend=None))
     )
 
-    # 컨테이너 폭 버그 회피를 위해 use_container_width=False(고정폭)
     st.altair_chart(arcs_extra + arcs_main + highlight, use_container_width=False)
-
 
 # 정당성향별 득표추이
 def render_vote_trend_chart(ts: pd.DataFrame):
@@ -870,6 +829,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
