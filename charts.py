@@ -120,15 +120,20 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     label_col = next((c for c in ["계열","성향","정당성향","party_label","label"] if c in df.columns), None)
     value_col = next((c for c in ["득표율","비율","share","ratio","pct","prop"] if c in df.columns), None)
     wide_value_cols = [c for c in ["민주","보수","진보","기타"] if c in df.columns]
-    # 선거 식별 후보 (코드/선거명/연도 등)
-    election_candidates = [c for c in ["선거명","election","코드","code","선거","분류"] if c in df.columns]
+
+    # 선거 식별 후보 (우선순위 명시)
+    prefer_ids = ["선거명","election","선거","분류","연도","year"]
+    fallback_ids = ["코드","code"]
+    id_col = next((c for c in prefer_ids if c in df.columns), None)
+    if id_col is None:
+        id_col = next((c for c in fallback_ids if c in df.columns), None)
+
     year_col = next((c for c in ["연도","year"] if c in df.columns), None)
 
     # ---- wide → long
     if wide_value_cols:
-        id_col = election_candidates[0] if election_candidates else year_col
         if not id_col:
-            st.warning("선거명을 식별할 컬럼이 필요합니다. (선거명/election/코드/연도)")
+            st.warning("선거명을 식별할 컬럼이 필요합니다. (선거명/election/연도/코드)")
             return
         long_df = df.melt(id_vars=id_col, value_vars=wide_value_cols,
                           var_name="계열", value_name="득표율")
@@ -138,22 +143,21 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             st.warning("정당 성향(계열)과 득표율 컬럼이 필요합니다.")
             return
         long_df = df.rename(columns={label_col:"계열", value_col:"득표율"}).copy()
-        if election_candidates:
-            base_elec = long_df[election_candidates[0]].astype(str)
+        if id_col:
+            base_elec = long_df[id_col].astype(str)
         elif year_col:
             base_elec = long_df[year_col].astype(str)
         else:
-            st.warning("선거명을 식별할 컬럼이 필요합니다. (선거명/election/코드/연도)")
+            st.warning("선거명을 식별할 컬럼이 필요합니다. (선거명/election/연도/코드)")
             return
 
-    # ---- 선거명 한글화(코드 유무 상관없이 모두 처리)
+    # ---- 선거명 한글화 (지역/체계 보존)
     def _norm_token(s: str) -> str:
         s = str(s).strip().replace("-", "_").replace(" ", "_").upper()
         s = re.sub(r"_+", "_", s)
         return s
 
-    # region(S/G) 유무 모두 허용: 2022[_S]?_(NA|LOC|PRESIDENT)[_(PRO|GOV)]?
-    CODE_RE = re.compile(r"^(20\d{2})(?:_[SG])?_(NA|LOC|PRESIDENT)(?:_(PRO|GOV))?$")
+    CODE_RE = re.compile(r"^(20\d{2})(?:_([SG]))?_(NA|LOC|PRESIDENT)(?:_(PRO|GOV))?$")
     KR_REGION_RE = re.compile(r"^(20\d{2})\s+(서울|경기)\s+(.*)$")
 
     def to_kr_label(raw: str) -> str:
@@ -161,44 +165,37 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         key = _norm_token(s)
         m = CODE_RE.fullmatch(key)
         if m:
-            year, lvl, kind = m.group(1), m.group(2), m.group(3)
+            year, region_tag, lvl, kind = m.group(1), m.group(2), m.group(3), m.group(4)
+            region_txt = f" {region_tag} " if region_tag else " "
             if lvl == "PRESIDENT":
-                return f"{year} 대선"
+                return f"{year}{region_txt}대선".strip()
             if lvl == "NA" and (kind == "PRO"):
-                return f"{year} 총선 비례"
+                return f"{year}{region_txt}총선 비례".strip()
             if lvl == "LOC" and (kind == "PRO"):
-                return f"{year} 광역 비례"
+                return f"{year}{region_txt}광역 비례".strip()
             if lvl == "LOC" and (kind == "GOV"):
-                return f"{year} 광역단체장"
-        # 이미 한글이면 서울/경기 접두 제거
+                return f"{year}{region_txt}광역단체장".strip()
+        # 한글형: 지역 접두부 보존
         km = KR_REGION_RE.match(s)
         if km:
-            return f"{km.group(1)} {km.group(3)}"
-        # "YYYY ..." 그대로면 사용
+            return f"{km.group(1)} {km.group(2)} {km.group(3)}"
         if re.match(r"^\s*20\d{2}", s):
             return s.strip()
-        return s  # 최후의 수단: 원문
+        return s
 
     long_df["선거명_표시"] = base_elec.apply(to_kr_label)
 
-    # ---- 득표율 정규화 (%, 0~1 모두 OK)
-    def _to_pct(v):
-        x = _to_pct_float(v, default=None)
-        if x is None:
-            return None
-        return x if x > 1 else x * 100.0
+    # ---- (득표율 변환 제거) 데이터 그대로 사용
+    # long_df["득표율"] = long_df["득표율"].apply(_to_pct)
 
-    long_df["득표율"] = long_df["득표율"].apply(_to_pct)
     long_df = long_df.dropna(subset=["선거명_표시","계열","득표율"])
 
     # ---- 연도 추출 & 정렬 고정
     long_df["연도정렬"] = long_df["선거명_표시"].str.extract(r"^(20\d{2})").astype(int)
     long_df = long_df.sort_values(["연도정렬","선거명_표시","계열"])
 
-    # ---- 동일 선거명×계열 중복 있으면 평균 처리(지그재그 완화)
-    long_df = (
-        long_df.groupby(["선거명_표시","연도정렬","계열"], as_index=False)["득표율"].mean()
-    )
+    # ---- 중복 제거 (평균 처리 제거)
+    long_df = long_df.drop_duplicates(subset=["선거명_표시","연도정렬","계열","득표율"])
 
     election_order = long_df.sort_values(["연도정렬","선거명_표시"])["선거명_표시"].unique().tolist()
 
@@ -209,6 +206,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     colors  = [color_map[p] for p in present]
 
     # ---- Altair: 넓은 히트박스 + 인터랙티브 줌/팬
+    import altair as alt
     selector = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
 
     line = (
@@ -219,21 +217,19 @@ def render_vote_trend_chart(ts: pd.DataFrame):
                     sort=election_order,
                     title="선거명",
                     axis=alt.Axis(labelAngle=-35, labelOverlap=False, labelPadding=6, labelLimit=280)),
-            y=alt.Y("득표율:Q", title="득표율(%)", scale=alt.Scale(domain=[0, 100])),
+            y=alt.Y("득표율:Q", title="득표율(%)"),
             color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors),
                             legend=alt.Legend(title=None, orient="top")),
         )
     )
 
-    # 투명 히트박스(마우스 올리기 쉬움)
     hit = (
         alt.Chart(long_df)
-        .mark_circle(size=600, opacity=0)  # ← 영역 두 배 확대
+        .mark_circle(size=600, opacity=0)
         .encode(x="선거명_표시:N", y="득표율:Q", color=alt.Color("계열:N", legend=None))
         .add_params(selector)
     )
 
-    # 선택 지점 강조 + 툴팁
     points = (
         alt.Chart(long_df)
         .mark_circle(size=140)
@@ -608,6 +604,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
