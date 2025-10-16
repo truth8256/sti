@@ -210,11 +210,12 @@ def render_population_box(pop_df: pd.DataFrame):
 # 연령 구성
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320):
     """
+    v1.3 (버전 마커)
     입력(모두 '명'):
       - 청년층(18~39세), 중년층(40~59세), 고령층(65세 이상), 전체 유권자 수
-    60~64세 = 전체 - (청년+중년+고령)  → 회색 조각(범례/강조 제외, 항상 포함)
-    강조는 st.radio로 제어(Altair selection 미사용)
-    가운데에는 선택 요약 숫자(전체=합계, 특정=해당 %와 명) 표시
+    60~64세 = 전체 - (청년+중년+고령)  → 회색 조각(항상 포함, 강조/범례 제외)
+    강조: st.radio (Altair selection 비의존)
+    가운데 요약: 전체=총합(명), 특정=퍼센트 크게 + 명 작게
     """
     import numpy as np
     import altair as alt
@@ -222,6 +223,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
     if pop_df is None or pop_df.empty:
         st.info("연령 구성 데이터가 없습니다.")
         return
+
     df = _norm_cols(pop_df.copy())
 
     # --- 컬럼명 ---
@@ -236,18 +238,17 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
             return
     total_col = next((c for c in TOTAL_CANDIDATES if c in df.columns), None)
     if total_col is None:
-        st.error("분모가 될 '전체 유권자 수' 컬럼을 찾지 못했습니다.")
+        st.error("'전체 유권자 수' 컬럼을 찾지 못했습니다.")
         return
 
-    # --- 숫자화(열 전체) + NaN→0 ---
-    cols_num = [Y_COL, M_COL, O_COL, total_col]
-    for c in cols_num:
+    # --- 숫자화 + NaN→0 (열 단위 일괄 처리) ---
+    for c in (Y_COL, M_COL, O_COL, total_col):
         df[c] = pd.to_numeric(
             df[c].astype(str).str.replace(",", "", regex=False).str.strip(),
-            errors="coerce"
+            errors="coerce",
         ).fillna(0)
 
-    # --- 합계(이미 지역 필터된 상태든 아니든 안전하게 합) ---
+    # --- 합계(안전하게 전체 합) ---
     y = float(df[Y_COL].sum())
     m = float(df[M_COL].sum())
     o = float(df[O_COL].sum())
@@ -256,29 +257,22 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         st.info("전체 유권자 수(분모)가 0입니다.")
         return
 
-    # --- 60~64 계산 + 보정/클리핑 ---
+    # --- 60~64 계산 + 보정 ---
     a6064 = total_v - (y + m + o)
-    if abs(a6064) <= 0.5:
+    if abs(a6064) <= 0.5:  # 소수 오차 보정
         a6064 = 0.0
     a6064 = max(0.0, min(a6064, total_v))
     denom = total_v
 
-    # --- 라벨/값 ---
+    # --- 데이터 테이블 ---
     labels_main = ["청년층(18~39세)", "중년층(40~59세)", "고령층(65세 이상)"]
     vals_main   = [y, m, o]
     labels_all  = labels_main + ["60~64세"]
     vals_all    = vals_main + [a6064]
     ratios_all  = [(v / denom * 100.0) if denom > 0 else 0.0 for v in vals_all]
 
-    # --- 강조 라디오 ---
-    focus = st.radio(
-        "강조",
-        options=["전체"] + labels_main,
-        index=0,
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-
+    # --- 라디오(강조) ---
+    focus = st.radio("강조", ["전체"] + labels_main, index=0, horizontal=True, label_visibility="collapsed")
     def emph_flag(name: str) -> bool:
         return (focus == "전체") or (name == focus)
 
@@ -286,31 +280,29 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         "연령": labels_all,
         "명": vals_all,
         "비율": [round(x, 6) for x in ratios_all],
-        "is_extra": [False, False, False, True],  # 마지막이 60~64세
+        "is_extra": [False, False, False, True],  # 60~64
         "강조": [emph_flag(nm) and nm != "60~64세" for nm in labels_all],
-        # 정렬 고정(레이어 간 순서 일치)
-        "순서": [0, 1, 2, 3],
+        "순서": [0, 1, 2, 3],  # 레이어 순서 고정
     })
 
-    # --- 색상 팔레트(시인성 강화: 명도 차이 크게) ---
+    # --- 색상 (명도 차 크게) ---
     color_map = {
-        "청년층(18~39세)": "#82B1FF",  # 밝은 파랑
-        "중년층(40~59세)": "#4D8EFF",  # 중간 파랑
-        "고령층(65세 이상)": "#1E6BFF", # 진한 파랑
-        "60~64세": "#A7ADB8",          # 회색
+        "청년층(18~39세)": "#82B1FF",
+        "중년층(40~59세)": "#4D8EFF",
+        "고령층(65세 이상)": "#1E6BFF",
+        "60~64세": "#A7ADB8",
     }
     color_domain = labels_all
     color_range  = [color_map[k] for k in color_domain]
 
-    # --- 차트 크기/센터 좌표(텍스트 배치용) ---
+    # --- 크기/센터 ---
     width = 280
     height = max(200, box_height_px - 56)
-    center_x = width / 2
-    center_y = height / 2
+    cx, cy = width / 2, height / 2
 
     base = alt.Chart(df_plot).properties(width=width, height=height)
 
-    # 60~64(회색) — 항상 표시, 패딩 각도 약간 부여
+    # 60~64 (회색, 항상 표시)
     arcs_extra = (
         base.transform_filter("datum.is_extra == true")
         .mark_arc(innerRadius=70, stroke="white", strokeWidth=1, padAngle=0.003)
@@ -336,7 +328,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         )
     )
 
-    # 선택 조각 외곽선(색은 동일, 테두리만 두껍게)
+    # 하이라이트(겹쳐 그리기: 같은 색 + 검은 외곽)
     highlight = (
         base.transform_filter("datum.is_extra == false && datum.강조 == true")
         .mark_arc(innerRadius=70, stroke="#111827", strokeWidth=2, padAngle=0.0)
@@ -347,31 +339,26 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 320
         )
     )
 
-    # --- 가운데 요약 텍스트(선택 상태에 따라 변경) ---
+    # 가운데 요약
     if focus == "전체":
-        # 합계(명)만 크게
-        center_big = f"{int(round(denom)):,}"
-        center_small = ""
+        big, small = f"{int(round(denom)):,}", ""
     else:
-        # 선택 % + 명
-        sel_idx = labels_all.index(focus)
-        p = ratios_all[sel_idx]
-        n = vals_all[sel_idx]
-        center_big = f"{p:.1f}%"
-        center_small = f"{int(round(n)):,}명"
+        i = labels_all.index(focus)
+        big, small = f"{ratios_all[i]:.1f}%", f"{int(round(vals_all[i])):,}명"
 
-    center_text_big = (
-        alt.Chart(pd.DataFrame({"x": [0], "y": [0]}))
+    center_big = (
+        alt.Chart(pd.DataFrame({"x":[0]}))
         .mark_text(fontSize=20, fontWeight="bold", align="center", baseline="middle", color="#0f172a")
-        .encode(x=alt.value(center_x), y=alt.value(center_y - 6), text=alt.value(center_big))
+        .encode(x=alt.value(cx), y=alt.value(cy-6), text=alt.value(big))
     )
-    center_text_small = (
-        alt.Chart(pd.DataFrame({"x": [0], "y": [0]}))
+    center_small = (
+        alt.Chart(pd.DataFrame({"x":[0]}))
         .mark_text(fontSize=12, align="center", baseline="middle", color="#475569")
-        .encode(x=alt.value(center_x), y=alt.value(center_y + 14), text=alt.value(center_small))
+        .encode(x=alt.value(cx), y=alt.value(cy+14), text=alt.value(small))
     )
 
-    st.altair_chart(arcs_extra + arcs_main + highlight + center_text_big + center_text_small, use_container_width=False)
+    st.altair_chart(arcs_extra + arcs_main + highlight + center_big + center_small, use_container_width=False)
+    st.caption("agechart v1.3")  # ← 화면에 이 문구가 보이면 새 코드가 적용된 것
 
 # 정당성향별 득표추이
 def render_vote_trend_chart(ts: pd.DataFrame):
@@ -856,6 +843,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with col3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
