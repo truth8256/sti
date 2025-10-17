@@ -247,13 +247,13 @@ def render_population_box(pop_df: pd.DataFrame, *, box_height_px: int = 240):
 #    keep margin/height so it does not exceed container height.
 # =========================================================
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240):
-    """Age composition half-donut chart centered inside its container.
+    """Age composition half-donut centered in the box, with center text via HTML overlay.
     Notes:
-      - Center text uses absolute (x,y) via alt.value(W/2, H/2) to avoid layering errors.
-      - The chart itself is horizontally centered using st.columns.
+      - Avoids Altair layer TypeError by not mixing polar (theta) and cartesian (x/y) in one layer spec.
+      - Chart is horizontally/vertically centered using flexbox; center text is absolute overlay.
     How to change later:
-      - Adjust W/H to tune the visual size without affecting outer container height.
-      - Tweak text offsets (+/-) to fine-tune vertical alignment.
+      - Change W/H for chart size (won't affect outer box height).
+      - Tweak translate(-50%,-55%) to nudge vertical alignment of center text.
     """
     df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df.empty:
@@ -294,10 +294,11 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         "순서": [1, 2, 3, 4],
     })
 
-    # --- Fixed inner chart size for stable center text coordinates ---
+    # ---- Chart size (fixed inside the box) ----
     W = 320
-    H = max(200, int(box_height_px))  # keep inside the box height
+    H = max(200, int(box_height_px))  # keep inside the container height
 
+    # ---- Half-donut (no text layers here to avoid polar/cartesian mixing) ----
     base = (
         alt.Chart(df_vis)
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
@@ -313,31 +314,34 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         .configure_view(stroke=None)
     )
 
-    # --- Center text with explicit (x,y) to avoid layering type errors ---
+    # Render chart to HTML (so we can overlay center text via CSS)
+    chart_html = base.to_html()
+
+    # Center text (natural, inside chart area)
     idx = labels_order.index(focus)
     pct_txt = f"{ratios100[idx]:.1f}%"
-    center_df = pd.DataFrame({"txt": [pct_txt], "sub": [focus]})
+    center_html = f"""
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-55%); text-align:center; pointer-events:none;">
+      <div style="font-size:20px; font-weight:800; color:#0f172a; line-height:1;">{pct_txt}</div>
+      <div style="font-size:11px; color:#475569; margin-top:4px;">{focus}</div>
+    </div>
+    """
 
-    center_big = (
-        alt.Chart(center_df)
-        .mark_text(fontSize=20, fontWeight="bold", align="center", baseline="middle")
-        .encode(text="txt:N", x=alt.value(W/2), y=alt.value(H/2 - 8))
-        .properties(width=W, height=H)
-    )
+    # ---- Center everything in the Streamlit container ----
+    # Outer flex centers vertically & horizontally within the given box height.
+    html = f"""
+    <div style="display:flex; justify-content:center; align-items:center; height:{box_height_px}px;">
+      <div style="position:relative; width:{W}px; height:{H}px;">
+        {chart_html}
+        {center_html}
+      </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
-    center_small = (
-        alt.Chart(center_df)
-        .mark_text(fontSize=11, opacity=0.9, align="center", baseline="top")
-        .encode(text="sub:N", x=alt.value(W/2), y=alt.value(H/2 + 6))
-        .properties(width=W, height=H)
-    )
-
-    chart = (base + center_big + center_small).configure_view(stroke=None)
-
-    # --- Center the whole chart block in the Streamlit container ---
-    col_left, col_mid, col_right = st.columns([1, 3, 1])
-    with col_mid:
-        st.altair_chart(chart, use_container_width=False, theme=None)
+    # NOTE (How to change later):
+    # - To make the donut bigger/smaller, change W/H and/or inner/outer radius.
+    # - If label overlaps, nudge translateY in transform: translate(-50%,-55%).
 
 # =========================================================
 # [Sex Composition by Age: Horizontal Bars]
@@ -828,6 +832,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
