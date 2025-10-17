@@ -348,44 +348,43 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
     label_map = {"20대":"18–29세","30대":"30대","40대":"40대","50대":"50대","60대":"60대","70대 이상":"70대 이상"}
     tidy["연령대표시"] = tidy["연령대"].map(label_map)
 
-    # Dashboard-friendly colors
     male_color = "#1E40AF"
     female_color = "#60A5FA"
 
-    # 10% vertical guide lines
-    grid_df = pd.DataFrame({"x": [i/10 for i in range(0, 11)]})
-
-    base = alt.Chart(tidy)
-
-    vgrid = (
-        alt.Chart(grid_df)
-        .mark_rule(strokeWidth=1, opacity=0.15)
-        .encode(x=alt.X("x:Q", scale=alt.Scale(domain=[0,1]), axis=None))
-        .properties(height=box_height_px)
-    )
-
     bars = (
-        base.mark_bar(size=16)
+        alt.Chart(tidy)
+        .mark_bar(size=16)
         .encode(
             y=alt.Y("연령대표시:N", sort=[label_map[a] for a in age_buckets], title=None),
-            x=alt.X("전체비중:Q",
-                    scale=alt.Scale(domain=[0,1]),
-                    axis=alt.Axis(format=".0%", values=[i/10 for i in range(0,11)],
-                                  title="전체 기준 구성비(%)", grid=False)),
-            color=alt.Color("성별:N",
-                            scale=alt.Scale(domain=["남성","여성"], range=[male_color, female_color]),
-                            legend=alt.Legend(title=None, orient="top")),
-            tooltip=[alt.Tooltip("연령대표시:N", title="연령대"),
-                     alt.Tooltip("성별:N", title="성별"),
-                     alt.Tooltip("명:Q", title="인원", format=",.0f"),
-                     alt.Tooltip("전체비중:Q", title="전체 기준 비중", format=".1%"),
-                     alt.Tooltip("연령대내비중:Q", title="연령대 내부 비중", format=".1%")]
+            x=alt.X(
+                "전체비중:Q",
+                scale=alt.Scale(domain=[0,1]),
+                axis=alt.Axis(
+                    format=".0%",
+                    values=[i/10 for i in range(0,11)],
+                    title="전체 기준 구성비(%)",
+                    grid=True,              # ✅ 수직 그리드 켬
+                    gridOpacity=0.15        # (선택) 그리드 가시성
+                )
+            ),
+            color=alt.Color(
+                "성별:N",
+                scale=alt.Scale(domain=["남성","여성"], range=[male_color, female_color]),
+                legend=alt.Legend(title=None, orient="top")
+            ),
+            tooltip=[
+                alt.Tooltip("연령대표시:N", title="연령대"),
+                alt.Tooltip("성별:N", title="성별"),
+                alt.Tooltip("명:Q", title="인원", format=",.0f"),
+                alt.Tooltip("전체비중:Q", title="전체 기준 비중", format=".1%"),
+                alt.Tooltip("연령대내비중:Q", title="연령대 내부 비중", format=".1%"),
+            ],
         )
         .properties(height=box_height_px, padding={"top":0,"left":8,"right":8,"bottom":26})
         .configure_view(stroke=None)
     )
 
-    st.altair_chart(vgrid + bars, use_container_width=True, theme=None)
+    st.altair_chart(bars, use_container_width=True, theme=None)
 
 # =========================================================
 # [Vote Trend by Ideology: Line Chart]
@@ -845,3 +844,4 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
