@@ -524,14 +524,18 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         labels = [l for l in order if re.match(fr"^{y}", str(l))]
         if labels: bands.append({"f":labels[0], "t":labels[-1], "연도":y})
     if bands:
-        chart = (legend_chart + bg + line + hit + pts).properties(  # ✅ legend_chart 제일 앞
+        bg = alt.Chart(pd.DataFrame(bands)).mark_rect(opacity=0.06).encode(
+            x=alt.X("f:N", sort=None, scale=alt.Scale(domain=order), title=None),
+            x2="t:N",
+            color=alt.Color("연도:N", legend=None)
+        )
+        chart = (bg + legend_chart + line + hit + pts).properties(
             height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
     else:
-        chart = (legend_chart + line + hit + pts).properties(        # ✅ legend_chart 제일 앞
+        chart = (legend_chart + line + hit + pts).properties(
             height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
-
     with st.container(border=True):
         st.altair_chart(chart, use_container_width=True)
 
@@ -854,6 +858,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
