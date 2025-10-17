@@ -119,7 +119,7 @@ def _party_chip_color(name: str) -> tuple[str, str]:
 # [Population Box] KPI + Mobility Bar
 # - All spacing hacks removed. Use Streamlit defaults.
 # =========================================================
-def render_population_box(pop_df: pd.DataFrame):
+def render_population_box(pop_df: pd.DataFrame, *, box_height_px: int = 260):
     with st.container(border=True):
         st.markdown("<div class='k-eq'>", unsafe_allow_html=True)
 
@@ -183,7 +183,7 @@ def render_population_box(pop_df: pd.DataFrame):
                     ),
                     tooltip=[alt.Tooltip("값:Q", title="유동비율", format=".1%")]
                 )
-            )
+            ).properties(height=box_height_px)
             st.altair_chart(chart, use_container_width=True, theme=None)
 
 # =========================================================
@@ -353,7 +353,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
 # - Fixed legend order/colors: 민주 → 보수 → 진보 → 기타.
 # - Simple hover tooltips; optional .interactive() for zoom/pan.
 # =========================================================
-def render_vote_trend_chart(ts: pd.DataFrame):
+def render_vote_trend_chart(ts: pd.DataFrame, *, box_height_px: int = 380):
     import re
     if ts is None or ts.empty:
         st.info("득표 추이 데이터가 없습니다."); return
@@ -505,11 +505,11 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             color=alt.Color("연도:N", legend=None)
         )
         chart = (bg + legend_chart + line + hit + pts).properties(
-            height=380, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+            height=box_height_px, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
     else:
         chart = (legend_chart + line + hit + pts).properties(
-            height=380, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+            height=box_height_px, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
 
     with st.container(border=True):
@@ -769,6 +769,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
