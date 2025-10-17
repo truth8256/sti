@@ -458,79 +458,74 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     color_map   = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
     colors      = [color_map[p] for p in party_order]
     
-    # ✅ 범례 전용 차트: 더미 x/y 값(0) 제공 + 아주 희미한 점으로 렌더 유지
-    legend_df = pd.DataFrame({
-        "계열": party_order,
-        "lx": [0]*len(party_order),
-        "ly": [0]*len(party_order),
-    })
-    
+    # ✅ 범례/색상: 항상 4개(민주→보수→진보→기타) 고정
+    party_order = ["민주","보수","진보","기타"]
+    color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
+    colors = [color_map[p] for p in party_order]
+
+    # ✅ 레전드 전용 투명 차트 (항상 범례 표시, 순서/색상 강제)
+    first_x = order[0] if len(order) else (str(long_df["선거명_표시"].iloc[0]) if not long_df.empty else "기준")
+    legend_df = pd.DataFrame({"선거명_표시":[first_x]*len(party_order), "계열":party_order, "득표율":[None]*len(party_order)})
     legend_chart = (
         alt.Chart(legend_df)
-        .mark_point(size=1, opacity=0.01)  # size=0은 환경에 따라 마크 제거될 수 있어 아주 작게/희미하게
+        .mark_point(opacity=0)
         .encode(
-            x=alt.X("lx:Q", axis=None),
-            y=alt.Y("ly:Q", axis=None),
-            color=alt.Color(
-                "계열:N",
-                scale=alt.Scale(domain=party_order, range=colors),
-                legend=alt.Legend(title=None, orient="top", values=party_order)
-            )
-        )
-        .properties(width=1, height=1)  # 차트 공간 최소화
-    )
-    
-    # --- 본 라인/포인트 레이어 (기존 그대로, 단 legend=None 유지) ---
-    line = (
-        alt.Chart(long_df)
-        .mark_line(point=False, strokeWidth=3)
-        .encode(
-            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order),
-                    axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
-            y=alt.Y("득표율:Q", title="득표율(%)"),
-            color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)
+            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order), title=None),
+            y=alt.Y("득표율:Q"),
+            color=alt.Color("계열:N",
+                            scale=alt.Scale(domain=party_order, range=colors),
+                            legend=alt.Legend(title=None, orient="top", values=party_order))
         )
     )
-    
-    hit = (
-        alt.Chart(long_df)
-        .mark_circle(size=600, opacity=0)
-        .encode(
-            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order)),
-            y="득표율:Q",
-            color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)
-        )
-    )
-    
+
+    # selection (툴팁/하이라이트)
     sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
-    pts = (
-        alt.Chart(long_df)
-        .mark_circle(size=120)
-        .encode(
-            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order)),
-            y="득표율:Q",
-            color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None),
-            opacity=alt.condition(sel, alt.value(1), alt.value(0)),
-            tooltip=[
-                alt.Tooltip("선거명_표시:N", title="선거명"),
-                alt.Tooltip("계열:N", title="계열"),
-                alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f"),
-            ],
-        )
-        .add_params(sel)
+
+    line = alt.Chart(long_df).mark_line(point=False, strokeWidth=3).encode(
+        x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order),
+                axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
+        y=alt.Y("득표율:Q", title="득표율(%)"),
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)  # ✅ 범례는 legend_chart에서만
     )
-    
-    # (선택) 연도 밴드 있으면 bg 만들고, 없으면 생략
-    # bg = alt.Chart(...)
-    
-    # ✅ 레이어 결합: legend_chart를 반드시 포함 + 색상 스케일 공유 강제
-    base_layers = legend_chart + line + hit + pts  # + (bg, 있으면 앞에 추가)
-    chart = base_layers.properties(
-        height=340,
-        padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
-    ).resolve_scale(color='shared').interactive()
-    
-    st.altair_chart(chart, use_container_width=True, theme=None)
+
+    hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
+        x=alt.X("선거명_표시:N", sort=None),
+        y="득표율:Q",
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)
+    ).add_params(sel)
+
+    pts = alt.Chart(long_df).mark_circle(size=120).encode(
+        x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order)),
+        y="득표율:Q",
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None),
+        opacity=alt.condition(sel, alt.value(1), alt.value(0)),
+        tooltip=[alt.Tooltip("선거명_표시:N", title="선거명"),
+                 alt.Tooltip("계열:N", title="계열"),
+                 alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
+    ).transform_filter(sel)
+
+    # 연도 밴드
+    years = sorted(long_df["연도"].unique().tolist())
+    bands = []
+    for y in years:
+        labels = [l for l in order if re.match(fr"^{y}", str(l))]
+        if labels: bands.append({"f":labels[0], "t":labels[-1], "연도":y})
+    if bands:
+        bg = alt.Chart(pd.DataFrame(bands)).mark_rect(opacity=0.06).encode(
+            x=alt.X("f:N", sort=None, scale=alt.Scale(domain=order), title=None),
+            x2="t:N",
+            color=alt.Color("연도:N", legend=None)
+        )
+        chart = (bg + legend_chart + line + hit + pts).properties(
+            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+        ).interactive()
+    else:
+        chart = (legend_chart + line + hit + pts).properties(
+            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+        ).interactive()
+
+    with st.container(border=True):
+        st.altair_chart(chart, use_container_width=True)
 
 
 # =============================
@@ -851,6 +846,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
