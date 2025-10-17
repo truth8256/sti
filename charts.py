@@ -19,6 +19,13 @@ alt.data_transformers.disable_max_rows()  # 대용량 시 자동 샘플링 방�
 # -----------------------------
 # 유틸
 # -----------------------------
+def _norm(x) -> str:
+    """소문자 + 공백/구두점 제거로 비교/조인용 정규화"""
+    s = str(x).strip().lower()
+    s = re.sub(r"\s+", "", s)
+    s = re.sub(r"[^\w]+", "", s)  # 한글/영문/숫자/밑줄만 남김
+    return s
+
 def _to_pct_float(v, default=None):
     """문자 '12.3%' 또는 12.3 또는 0.123 -> 12.3 으로 통일"""
     if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -408,7 +415,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     uniq = uniq.sort_values(["연도","순위","선거명_표시"])
     order = uniq["선거명_표시"].tolist()
 
-    # ---- 커스텀 이동: 2020 총선 비례 다음에 2022 대선 → 2022 광역 비례 → 2022 광역단체장
+    # ---- 커스텀 이동
     def _first_label(labels, patt):
         for s in labels:
             if (hasattr(patt, "search") and patt.search(s)) or (isinstance(patt, str) and patt in s):
@@ -428,8 +435,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             labels.insert(idx + 1, t)
         return labels
 
-    if order is None:
-        order = []
+    if order is None: order = []
     order = reorder_after(
         order,
         re.compile(r"^2020.*총선\s*비례"),
@@ -443,7 +449,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
                    ["선거명_표시"].astype(str).unique().tolist()
         )
 
-    # x축 순서를 데이터에도 고정(카테고리형) + 동일 순서로 정렬
+    # x축 순서를 데이터에도 고정
     long_df["선거명_표시"] = pd.Categorical(long_df["선거명_표시"], categories=order, ordered=True)
     long_df = long_df.sort_values(["선거명_표시", "계열"]).reset_index(drop=True)
 
@@ -452,18 +458,20 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
     colors = [color_map[p] for p in party_order]
 
-    # ✅ 더미 행 추가: 데이터에 없는 계열도 legend에 노출되도록
-    missing = [p for p in party_order if p not in long_df["계열"].unique().tolist()]
-    if missing:
-        # x축 기준 라벨 하나를 더미용으로 사용 (첫 항목)
-        first_x = order[0] if len(order) else (str(long_df["선거명_표시"].iloc[0]) if not long_df.empty else "기준")
-        stub = pd.DataFrame({
-            "선거명_표시": [first_x] * len(missing),
-            "계열": missing,
-            "득표율": [None] * len(missing),
-            # 선택적으로 연도/타입도 넣을 수 있으나 차트엔 영향 없음
-        })
-        long_df = pd.concat([long_df, stub], ignore_index=True)
+    # ✅ 레전드 전용 투명 차트 (항상 범례 표시, 순서/색상 강제)
+    first_x = order[0] if len(order) else (str(long_df["선거명_표시"].iloc[0]) if not long_df.empty else "기준")
+    legend_df = pd.DataFrame({"선거명_표시":[first_x]*len(party_order), "계열":party_order, "득표율":[None]*len(party_order)})
+    legend_chart = (
+        alt.Chart(legend_df)
+        .mark_point(opacity=0)
+        .encode(
+            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order), title=None),
+            y=alt.Y("득표율:Q"),
+            color=alt.Color("계열:N",
+                            scale=alt.Scale(domain=party_order, range=colors),
+                            legend=alt.Legend(title=None, orient="top", values=party_order))
+        )
+    )
 
     # selection (툴팁/하이라이트)
     sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
@@ -472,9 +480,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order),
                 axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
         y=alt.Y("득표율:Q", title="득표율(%)"),
-        color=alt.Color("계열:N",
-                        scale=alt.Scale(domain=party_order, range=colors),
-                        legend=alt.Legend(title=None, orient="top", values=party_order))  # ← 순서도 강제
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)  # ✅ 범례는 legend_chart에서만
     )
 
     hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
@@ -505,9 +511,13 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             x2="t:N",
             color=alt.Color("연도:N", legend=None)
         )
-        chart = (bg + line + hit + pts).properties(height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}).interactive()
+        chart = (bg + legend_chart + line + hit + pts).properties(
+            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+        ).interactive()
     else:
-        chart = (line + hit + pts).properties(height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}).interactive()
+        chart = (legend_chart + line + hit + pts).properties(
+            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+        ).interactive()
 
     with st.container(border=True):
         st.altair_chart(chart, use_container_width=True)
@@ -831,6 +841,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
