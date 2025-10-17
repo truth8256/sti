@@ -453,23 +453,27 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     long_df["선거명_표시"] = pd.Categorical(long_df["선거명_표시"], categories=order, ordered=True)
     long_df = long_df.sort_values(["선거명_표시", "계열"]).reset_index(drop=True)
 
-    # ✅ 범례/색상: 항상 4개(민주→보수→진보→기타) 고정
+    # ✅ 범례 전용 투명 차트 (항상 범례 표시, 순서/색상 강제)
     party_order = ["민주","보수","진보","기타"]
-    color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
-    colors = [color_map[p] for p in party_order]
-
-    # ✅ 레전드 전용 투명 차트 (항상 범례 표시, 순서/색상 강제)
-    first_x = order[0] if len(order) else (str(long_df["선거명_표시"].iloc[0]) if not long_df.empty else "기준")
-    legend_df = pd.DataFrame({"선거명_표시":[first_x]*len(party_order), "계열":party_order, "득표율":[None]*len(party_order)})
+    color_map   = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
+    colors      = [color_map[p] for p in party_order]
+    
+    legend_df = pd.DataFrame({
+        "계열": party_order,
+        "dummy_y": [0]*len(party_order)   # ← 더미 값
+    })
+    
     legend_chart = (
         alt.Chart(legend_df)
-        .mark_point(opacity=0)
+        .mark_point(size=0, opacity=0)    # 화면에는 안 보이게
         .encode(
-            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order), title=None),
-            y=alt.Y("득표율:Q"),
-            color=alt.Color("계열:N",
-                            scale=alt.Scale(domain=party_order, range=colors),
-                            legend=alt.Legend(title=None, orient="top", values=party_order))
+            x=alt.value(0),               # 위치는 의미 없음
+            y=alt.Y("dummy_y:Q"),         # ✅ Q 채널에 null 아님(0) → 마크가 유지됨
+            color=alt.Color(
+                "계열:N",
+                scale=alt.Scale(domain=party_order, range=colors),
+                legend=alt.Legend(title=None, orient="top", values=party_order)
+            )
         )
     )
 
@@ -841,6 +845,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
