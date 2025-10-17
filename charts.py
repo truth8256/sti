@@ -105,12 +105,13 @@ COLOR_BLUE      = "#1E6BFF"
 def _inject_global_css():
     st.markdown(f"""
     <style>
-      .k-card {{ padding:4px 6px; }}  /* 내부 여백 축소 */
+      .k-card {{ padding:4px 6px; }}
       .k-eq {{ min-height:{ROW_MINH}px; display:flex; flex-direction:column; justify-content:flex-start; }}
       .k-minh-card {{ min-height:{CARD_HEIGHT}px; }}
       .k-kpi-title {{ color:#6B7280; font-weight:600; font-size:.95rem; }}
       .k-kpi-value {{ font-weight:800; font-size:1.18rem; color:#111827; letter-spacing:-0.2px; }}
       .k-box {{ border:1px solid #EEF2F7; border-radius:10px; padding:8px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+      div[data-testid="stContainer"] > div:has(> .k-eq) {{ padding-top: 0 !important; margin-top: 0 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -208,7 +209,6 @@ def render_population_box(pop_df: pd.DataFrame):
 # =============================
 # 연령 구성 (반원 도넛)
 # =============================
-# (교체) render_age_highlight_chart()
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240, width_px: int = 300):
     df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df is None or df.empty:
@@ -250,16 +250,19 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
     df_vis = pd.DataFrame({
         "연령": labels_order,
         "명": values,
-        "비율": ratios01,          # 0~1
-        "표시비율": ratios100,      # 0~100
+        "비율": ratios01,
+        "표시비율": ratios100,
         "강조": [l == focus for l in labels_order],
     })
+
+    df_vis["연령"] = pd.Categorical(df_vis["연령"], categories=labels_order, ordered=True)
+    df_vis = df_vis.sort_values("연령")
 
     chart = (
         alt.Chart(df_vis)
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
         .encode(
-            theta=alt.Theta("비율:Q", stack=True, scale=alt.Scale(range=[-math.pi/2, math.pi/2])),
+            theta=alt.Theta("비율:Q", stack=True, sort=None, scale=alt.Scale(range=[-math.pi/2, math.pi/2])),
             color=alt.Color("강조:N",
                             scale=alt.Scale(domain=[True, False], range=[COLOR_BLUE, "#E5E7EB"]),
                             legend=None),
@@ -344,7 +347,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
             y=alt.Y("연령대표시:N", sort=[label_map[a] for a in age_buckets], title=None),
             x=alt.X("전체비중:Q",
                     axis=alt.Axis(format=".0%", title="전체 기준 구성비(%)", values=[0,0.25,0.5,0.75,1.0]),
-                    stack="normalize"),  # 시각적 분할은 성별, 길이는 연령대 총합에 의해 결정
+                    stack="zero"),  # 시각적 분할은 성별, 길이는 연령대 총합에 의해 결정
             color=alt.Color("성별:N",
                             scale=alt.Scale(domain=["남성","여성"], range=[male_color, female_color]),
                             legend=alt.Legend(title=None, orient="top")),
@@ -521,16 +524,11 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         labels = [l for l in order if re.match(fr"^{y}", str(l))]
         if labels: bands.append({"f":labels[0], "t":labels[-1], "연도":y})
     if bands:
-        bg = alt.Chart(pd.DataFrame(bands)).mark_rect(opacity=0.06).encode(
-            x=alt.X("f:N", sort=None, scale=alt.Scale(domain=order), title=None),
-            x2="t:N",
-            color=alt.Color("연도:N", legend=None)
-        )
-        chart = (bg + legend_chart + line + hit + pts).properties(
+        chart = (legend_chart + bg + line + hit + pts).properties(  # ✅ legend_chart 제일 앞
             height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
     else:
-        chart = (legend_chart + line + hit + pts).properties(
+        chart = (legend_chart + line + hit + pts).properties(        # ✅ legend_chart 제일 앞
             height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
 
@@ -825,13 +823,13 @@ def render_region_detail_layout(
 
     # 인구 정보 섹션
     st.markdown("### 👥 인구 정보")
-    left, right = st.columns([1, 5])
+    left, right = st.columns([1, 4.2])
 
     with left:
         render_population_box(df_pop)
 
     with right:
-        a, b = st.columns([1.2, 2.8])
+        a, b = st.columns([1.15, 2.85])
         with a.container(border=True):
             st.markdown("**연령 구성**")
             st.markdown("<div class='k-eq'>", unsafe_allow_html=True)
@@ -856,6 +854,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
