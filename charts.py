@@ -116,7 +116,7 @@ def _inject_global_css():
       .k-kpi-value {{ font-weight:800; font-size:1.18rem; color:#111827; letter-spacing:-0.2px; }}
       .k-box {{ border:1px solid #EEF2F7; border-radius:10px; padding:8px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
       /* Remove unwanted top spacing inside Streamlit containers that host .k-eq children */
-      div[data-testid="stContainer"] > div:has(> .k-eq) {{ padding-top:0 !important; margin-top:0 !important; }}
+      div[data-testid="stContainer"]:has(.k-eq) { padding-top:0 !important; margin-top:0 !important; }
       .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown p {{ margin-top:0 !important; }}
     </style>
     """, unsafe_allow_html=True)
@@ -358,10 +358,10 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
             y=alt.Y("연령대표시:N", sort=[label_map[a] for a in age_buckets], title=None),
             x=alt.X(
                 "전체비중:Q",
-                scale=alt.Scale(domain=[0, 0.5]),
+                scale=alt.Scale(domain=[0, 0.4]),
                 axis=alt.Axis(
                     format=".0%",
-                    values=[i/10 for i in range(0,6)],  # 0, 10, 20, 30, 40, 50%
+                    values=[i/10 for i in range(0,5)],  # 0, 10, 20, 30, 40%
                     title="전체 기준 구성비(%)",
                     grid=True,
                     gridOpacity=0.15
@@ -497,7 +497,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     legend_df = pd.DataFrame({"선거명_표시":[first_x]*len(party_order), "계열":party_order, "득표율":[None]*len(party_order)})
     legend_chart = (
         alt.Chart(legend_df)
-        .mark_point(opacity=0)
+        .mark_point(opacity=0.001)
         .encode(
             x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order), title=None),
             y=alt.Y("득표율:Q"),
@@ -844,5 +844,6 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
