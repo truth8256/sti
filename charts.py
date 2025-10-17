@@ -226,8 +226,8 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 180
     focus = st.radio("강조", [Y, M, O], index=0, horizontal=True, label_visibility="collapsed")
 
     width  = max(260, int(width_px))
-    height = max(220, int(box_height_px))
-    inner_r, outer_r = 68, 106
+    height = max(200, int(box_height_px))
+    inner_r, outer_r = 68, 106    # inner radius, outer radius
 
     df_vis = pd.DataFrame({
         "연령": labels_order,
@@ -505,11 +505,11 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             color=alt.Color("연도:N", legend=None)
         )
         chart = (bg + legend_chart + line + hit + pts).properties(
-            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+            height=380, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
     else:
         chart = (legend_chart + line + hit + pts).properties(
-            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+            height=380, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
         ).interactive()
 
     with st.container(border=True):
@@ -726,7 +726,7 @@ def render_prg_party_box(prg_row: pd.DataFrame|None=None, pop_row: pd.DataFrame|
         </div>
         """
         from streamlit.components.v1 import html as html_component
-        html_component(html, height=120, scrolling=False)
+        html_component(html, height=200, scrolling=False)
 
 # =========================================================
 # [Region Detail Layout]
@@ -745,7 +745,7 @@ def render_region_detail_layout(
     left, right = st.columns([1, 4.2])
 
     with left:
-        render_population_box(df_pop)
+        render_population_box(df_pop, box_height_px=260)
 
     with right:
         a, b = st.columns([1.15, 2.85])
@@ -754,11 +754,11 @@ def render_region_detail_layout(
             render_age_highlight_chart(df_pop, box_height_px=180, width_px=300)
         with b.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
-            render_sex_ratio_bar(df_pop, box_height_px=240)
+            render_sex_ratio_bar(df_pop, box_height_px=260)
 
     # Vote trend
     st.markdown("### 📈 정당성향별 득표추이")
-    render_vote_trend_chart(df_trend)
+    render_vote_trend_chart(df_trend, box_height_px=300)
 
     # Results/Politics
     st.markdown("### 🗳️ 선거 결과 및 정치지형")
@@ -769,6 +769,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
