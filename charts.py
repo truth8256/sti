@@ -121,10 +121,11 @@ def _party_chip_color(name: str) -> tuple[str, str]:
 # =========================================================
 def render_population_box(pop_df: pd.DataFrame):
     with st.container(border=True):
-        st.markdown("**인구 정보**")
+        st.markdown("<div class='k-eq'>", unsafe_allow_html=True)
 
         if pop_df is None or pop_df.empty:
             st.info("유동인구/연령/성비 차트를 위한 데이터가 없습니다.")
+            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         df = _norm_cols(pop_df.copy())
@@ -134,6 +135,7 @@ def render_population_box(pop_df: pd.DataFrame):
 
         if not total_col or not float_col:
             st.error("population.csv에서 '전체 유권자' 또는 '유동인구' 컬럼을 찾지 못했습니다.")
+            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         def _to_num(x):
@@ -153,14 +155,16 @@ def render_population_box(pop_df: pd.DataFrame):
 
         mobility_rate = floating_pop/total_voters if total_voters>0 else float("nan")
 
-        # KPI text
-        c1 = st.columns(1)
-        with c1:
-            st.caption("전체 유권자 수")
-            st.markdown(f"**{int(round(total_voters)):,}명**")
-            
-            st.caption("유동인구")
-            st.markdown(f"**{int(round(floating_pop)):,}명**")
+        # --- KPI cards (compact, zero top padding) ---
+        st.markdown(f"""
+        <div class="k-card" style="display:flex; flex-direction:column; align-items:center; text-align:center;">
+          <div class="k-kpi-title">전체 유권자 수</div>
+          <div class="k-kpi-value">{int(round(total_voters)):,}명</div>
+          <div style="height:6px;"></div>
+          <div class="k-kpi-title">유동인구</div>
+          <div class="k-kpi-value">{int(round(floating_pop)):,}명</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Single bar for mobility rate
         if mobility_rate == mobility_rate:
@@ -431,6 +435,22 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         .properties(height=340)
         .configure_view(stroke=None)
     )
+    
+    hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
+        x=alt.X("선거명_표시:N", sort=None),
+        y="득표율:Q",
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)
+    ).add_params(sel)
+
+    pts = alt.Chart(long_df).mark_circle(size=120).encode(
+        x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order)),
+        y="득표율:Q",
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None),
+        opacity=alt.condition(sel, alt.value(1), alt.value(0)),
+        tooltip=[alt.Tooltip("선거명_표시:N", title="선거명"),
+                 alt.Tooltip("계열:N", title="계열"),
+                 alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
+    ).transform_filter(sel)
 
     st.altair_chart(line.interactive(), use_container_width=True, theme=None)
 
@@ -688,5 +708,6 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
