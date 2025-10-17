@@ -807,19 +807,20 @@ def render_region_detail_layout(
     df_prg: pd.DataFrame | None = None,
 ):
     st.markdown("### 👥 인구 정보")
-    left, right = st.columns([1.1, 2.9])
+    left, right = st.columns([1.1, 2.9], gap="medium")
 
-    with left:
+    with left.container(border=True, height="stretch"):
         render_population_box(df_pop, box_height_px=240)
-
-    with right:
-        a, b = st.columns([1.6, 2.4])
-        with a.container(border=True):
+    
+    with right.container(border=True, height="stretch"):
+        a, b = st.columns([1.6, 2.4], gap="small")
+        with a.container(border=True, height="stretch"):
             st.markdown("**연령 구성**")
             render_age_highlight_chart(df_pop, box_height_px=240)
-        with b.container(border=True):
+        with b.container(border=True, height="stretch"):
             st.markdown("**연령별, 성별 인구분포**")
             render_sex_ratio_bar(df_pop, box_height_px=240)
+
 
     st.markdown("### 📈 정당성향별 득표추이")
     render_vote_trend_chart(df_trend, box_height_px=420)
@@ -832,6 +833,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
