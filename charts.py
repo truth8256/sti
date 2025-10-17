@@ -96,8 +96,8 @@ def _load_index_df() -> pd.DataFrame | None:
 # -----------------------------
 # 스타일 상수 & 전역 CSS
 # -----------------------------
-ROW_MINH = 300       # 🔻 줄 높이 낮춤 (여백 축소)
-CARD_HEIGHT = 200    # 🔻 카드 높이도 낮춤
+ROW_MINH = 240       # 🔻 세 박스 기본 높이 통일 (population_box / age / sex)
+CARD_HEIGHT = 200
 
 COLOR_TEXT_DARK = "#111827"
 COLOR_BLUE      = "#1E6BFF"
@@ -106,12 +106,13 @@ def _inject_global_css():
     st.markdown(f"""
     <style>
       .k-card {{ padding:4px 6px; }}
-      .k-eq {{ min-height:{ROW_MINH}px; display:flex; flex-direction:column; justify-content:flex-start; }}
+      .k-eq {{ min-height:{ROW_MINH}px; display:flex; flex-direction:column; justify-content:flex-start; padding-top:0 !important; margin-top:0 !important; }}
       .k-minh-card {{ min-height:{CARD_HEIGHT}px; }}
       .k-kpi-title {{ color:#6B7280; font-weight:600; font-size:.95rem; }}
       .k-kpi-value {{ font-weight:800; font-size:1.18rem; color:#111827; letter-spacing:-0.2px; }}
       .k-box {{ border:1px solid #EEF2F7; border-radius:10px; padding:8px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
-      div[data-testid="stContainer"] > div:has(> .k-eq) {{ padding-top: 0 !important; margin-top: 0 !important; }}
+      div[data-testid="stContainer"] > div:has(> .k-eq) {{ padding-top:0 !important; margin-top:0 !important; }}
+      .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown p {{ margin-top:0 !important; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -253,16 +254,21 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         "비율": ratios01,
         "표시비율": ratios100,
         "강조": [l == focus for l in labels_order],
+        "순서": [1, 2, 3, 4],  # ✅ 스택 순서 고정용
     })
 
     df_vis["연령"] = pd.Categorical(df_vis["연령"], categories=labels_order, ordered=True)
-    df_vis = df_vis.sort_values("연령")
+    df_vis = df_vis.sort_values("순서")
 
     chart = (
         alt.Chart(df_vis)
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
         .encode(
-            theta=alt.Theta("비율:Q", stack=True, sort=None, scale=alt.Scale(range=[-math.pi/2, math.pi/2])),
+            theta=alt.Theta("비율:Q",
+                            stack=True,
+                            sort=None,
+                            scale=alt.Scale(range=[-math.pi/2, math.pi/2])),
+            order=alt.Order("순서:Q"),  # ✅ 도넛 조각 배치 순서 고정(왼→오)
             color=alt.Color("강조:N",
                             scale=alt.Scale(domain=[True, False], range=[COLOR_BLUE, "#E5E7EB"]),
                             legend=None),
@@ -271,11 +277,11 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
                      alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f")]
         )
         .properties(width=width, height=height, padding={"top":0,"left":0,"right":0,"bottom":0})
-        .configure_view(stroke=None)  # 박스 테두리 간섭 제거
+        .configure_view(stroke=None)
     )
     st.altair_chart(chart, use_container_width=False, theme=None)
 
-    # 중앙 숫자(강조 구간) — HTML로 중앙 고정
+    # 중앙 숫자(강조 구간)
     idx = labels_order.index(focus)
     pct_txt = f"{ratios100[idx]:.1f}%"
     st.markdown(
@@ -320,34 +326,39 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
     rows = []
     for a in age_buckets:
         m, f = float(sums[f"{a} 남성"]), float(sums[f"{a} 여성"])
-        rows += [
-            {"연령대":a,"성별":"남성","명":m},
-            {"연령대":a,"성별":"여성","명":f},
-        ]
+        rows += [{"연령대":a,"성별":"남성","명":m}, {"연령대":a,"성별":"여성","명":f}]
     tidy = pd.DataFrame(rows)
-    tidy["전체비중"] = tidy["명"] / grand_total  # **전체 100 기준**
-    # 같은 연령대 내 남+여 합 (막대 내부 분할 계산용)
+    tidy["전체비중"] = tidy["명"] / grand_total
     age_tot = tidy.groupby("연령대")["명"].transform("sum").replace(0, 1.0)
     tidy["연령대내비중"] = tidy["명"] / age_tot
 
     label_map = {"20대":"18–29세","30대":"30대","40대":"40대","50대":"50대","60대":"60대","70대 이상":"70대 이상"}
     tidy["연령대표시"] = tidy["연령대"].map(label_map)
 
-    n = tidy["연령대표시"].nunique()
-    height_px = max(box_height_px, n*44 + 24)
-
-    # 색상: 파랑 계열 대비(남성 진한 파랑, 여성 밝은 파랑)
+    # 색상(대시보드와 조화)
     male_color = "#1E40AF"
     female_color = "#60A5FA"
 
-    chart = (
-        alt.Chart(tidy)
-        .mark_bar(size=16)
+    # 10% 간격 수직선용 데이터
+    grid_df = pd.DataFrame({"x": [i/10 for i in range(0, 11)]})
+
+    base = alt.Chart(tidy)
+
+    vgrid = (
+        alt.Chart(grid_df)
+        .mark_rule(strokeWidth=1, opacity=0.15)
+        .encode(x=alt.X("x:Q", scale=alt.Scale(domain=[0,1]), axis=None))
+        .properties(height=box_height_px)
+    )
+
+    bars = (
+        base.mark_bar(size=16)
         .encode(
             y=alt.Y("연령대표시:N", sort=[label_map[a] for a in age_buckets], title=None),
             x=alt.X("전체비중:Q",
-                    axis=alt.Axis(format=".0%", title="전체 기준 구성비(%)", values=[0,0.25,0.5,0.75,1.0]),
-                    stack="zero"),  # 시각적 분할은 성별, 길이는 연령대 총합에 의해 결정
+                    scale=alt.Scale(domain=[0,1]),
+                    axis=alt.Axis(format=".0%", values=[i/10 for i in range(0,11)],
+                                  title="전체 기준 구성비(%)", grid=False)),
             color=alt.Color("성별:N",
                             scale=alt.Scale(domain=["남성","여성"], range=[male_color, female_color]),
                             legend=alt.Legend(title=None, orient="top")),
@@ -357,10 +368,11 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
                      alt.Tooltip("전체비중:Q", title="전체 기준 비중", format=".1%"),
                      alt.Tooltip("연령대내비중:Q", title="연령대 내부 비중", format=".1%")]
         )
-        .properties(height=height_px, padding={"top":0,"left":8,"right":8,"bottom":26})
+        .properties(height=box_height_px, padding={"top":0,"left":8,"right":8,"bottom":26})
         .configure_view(stroke=None)
     )
-    st.altair_chart(chart, use_container_width=True, theme=None)
+
+    st.altair_chart(vgrid + bars, use_container_width=True, theme=None)
 
 # =============================
 # 정당성향별 득표추이 (라인)
@@ -858,6 +870,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
