@@ -442,9 +442,12 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
     colors  = [color_map[p] for p in present]
 
-    # 범례: 라인에만 두고(hit/pts는 legend=None) → 중복 없이 항상 1개 표시
-    sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
-
+    # 범례
+    party_order = ["민주","보수","진보","기타"]
+    color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
+    present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
+    colors  = [color_map[p] for p in present]
+    
     line = alt.Chart(long_df).mark_line(point=False, strokeWidth=3).encode(
         x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order),
                 axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
@@ -788,6 +791,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
