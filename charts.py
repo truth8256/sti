@@ -358,13 +358,13 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
             y=alt.Y("연령대표시:N", sort=[label_map[a] for a in age_buckets], title=None),
             x=alt.X(
                 "전체비중:Q",
-                scale=alt.Scale(domain=[0,1]),
+                scale=alt.Scale(domain=[0, 0.5]),
                 axis=alt.Axis(
                     format=".0%",
-                    values=[i/10 for i in range(0,11)],
+                    values=[i/10 for i in range(0,6)],  # 0, 10, 20, 30, 40, 50%
                     title="전체 기준 구성비(%)",
-                    grid=True,              # ✅ 수직 그리드 켬
-                    gridOpacity=0.15        # (선택) 그리드 가시성
+                    grid=True,
+                    gridOpacity=0.15
                 )
             ),
             color=alt.Color(
@@ -844,4 +844,5 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
