@@ -320,7 +320,7 @@ def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
 
     bars = (
         alt.Chart(tidy)
-        .mark_bar(size=16)
+        .mark_bar(size=19)
         .encode(
             y=alt.Y("연령대표시:N", sort=[label_map[a] for a in age_buckets], title=None),
             x=alt.X(
@@ -745,20 +745,20 @@ def render_region_detail_layout(
     left, right = st.columns([1, 4.2])
 
     with left:
-        render_population_box(df_pop, box_height_px=260)
+        render_population_box(df_pop, box_height_px=180)
 
     with right:
         a, b = st.columns([1.15, 2.85])
         with a.container(border=True):
             st.markdown("**연령 구성**")
-            render_age_highlight_chart(df_pop, box_height_px=180, width_px=300)
+            render_age_highlight_chart(df_pop, box_height_px=200, width_px=300)
         with b.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
-            render_sex_ratio_bar(df_pop, box_height_px=260)
+            render_sex_ratio_bar(df_pop, box_height_px=300)
 
     # Vote trend
     st.markdown("### 📈 정당성향별 득표추이")
-    render_vote_trend_chart(df_trend, box_height_px=300)
+    render_vote_trend_chart(df_trend, box_height_px=200)
 
     # Results/Politics
     st.markdown("### 🗳️ 선거 결과 및 정치지형")
@@ -769,6 +769,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
