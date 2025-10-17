@@ -154,11 +154,11 @@ def render_population_box(pop_df: pd.DataFrame):
         mobility_rate = floating_pop/total_voters if total_voters>0 else float("nan")
 
         # KPI text
-        c1, c2 = st.columns(2)
+        c1 = st.columns(1)
         with c1:
             st.caption("전체 유권자 수")
             st.markdown(f"**{int(round(total_voters)):,}명**")
-        with c2:
+            
             st.caption("유동인구")
             st.markdown(f"**{int(round(floating_pop)):,}명**")
 
@@ -273,7 +273,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 180
 # [Sex Composition by Age: Horizontal Bars]
 # - Keep default paddings; show standard legend.
 # =========================================================
-def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 180):
+def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
     if pop_df is None or pop_df.empty:
         st.info("성비 데이터를 표시할 수 없습니다. (population.csv 없음)")
         return
@@ -673,7 +673,7 @@ def render_region_detail_layout(
             render_age_highlight_chart(df_pop, box_height_px=180, width_px=300)
         with b.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
-            render_sex_ratio_bar(df_pop, box_height_px=180)
+            render_sex_ratio_bar(df_pop, box_height_px=240)
 
     # Vote trend
     st.markdown("### 📈 정당성향별 득표추이")
@@ -688,4 +688,5 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
