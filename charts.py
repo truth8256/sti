@@ -564,29 +564,42 @@ def render_results_2024_card(res_row_or_df: pd.DataFrame | None, df_24: pd.DataF
         p1, cand1 = split(name1)
         p2, cand2 = split(name2)
 
+        # GAP 표기: 숫자면 %p 단위 강제, None 등 비정상은 기존 포맷 함수 사용
+        gap_txt = _fmt_gap(gap)
+        if isinstance(gap, (int, float)):
+            gap_txt = f"{gap:.1f} %p"
+
         html = f"""
         <style>
-          .grid-24 {{ display:grid; grid-template-columns: repeat(3,1fr); align-items:center; gap:0; margin-top:4px; }}
-          @media (max-width: 720px) {{ .grid-24 {{ grid-template-columns: repeat(2,1fr); gap:8px; }} }}
+          /* 2열 + 2행: 위 행(후보1, 후보2) / 아래 행(GAP는 두 칸 모두 차지) */
+          .grid-24 {{ display:grid; grid-template-columns: repeat(2,1fr); grid-template-rows:auto auto; align-items:center; gap:0; margin-top:4px; }}
+          @media (max-width: 720px) {{
+            .grid-24 {{ grid-template-columns: 1fr 1fr; gap:8px; }}
+          }}
           .chip {{ display:inline-flex; flex-direction:column; align-items:center; padding:6px 10px; border-radius:14px;
                   font-weight:600; font-size:.95rem; line-height:1.2; }}
           .kpi {{ font-weight:700; font-size:1.02rem; margin-top:8px; font-variant-numeric:tabular-nums; color:{COLOR_TEXT_DARK}; }}
           .cell {{ padding:8px 8px; text-align:center; min-height:80px; }}
-          .divider {{ border-left:1px solid #EEF2F7; }}
+          .divider-v {{ border-left:1px solid #EEF2F7; }}
+          .cell-gap {{ grid-column: 1 / -1; padding:10px 8px 2px; text-align:center; border-top:1px solid #EEF2F7; }}
+          .gap-title {{ color:#6B7280; font-weight:600; margin-bottom:4px; }}
         </style>
         <div class="k-minh-card">
           <div class="grid-24">
+            <!-- 1행 왼쪽: 후보1 -->
             <div class="cell">
               <div class="chip" style="color:{c1_fg}; background:{c1_bg};"><span style="opacity:.9;">{p1}</span><span style="color:{COLOR_TEXT_DARK};">{cand1}</span></div>
               <div class="kpi">{_fmt_pct(share1)}</div>
             </div>
-            <div class="cell divider">
+            <!-- 1행 오른쪽: 후보2 -->
+            <div class="cell divider-v">
               <div class="chip" style="color:{c2_fg}; background:{c2_bg};"><span style="opacity:.9;">{p2}</span><span style="color:{COLOR_TEXT_DARK};">{cand2}</span></div>
               <div class="kpi">{_fmt_pct(share2)}</div>
             </div>
-            <div class="cell divider">
-              <div style="color:#6B7280; font-weight:600;">1~2위 격차</div>
-              <div class="kpi">{_fmt_gap(gap)}</div>
+            <!-- 2행: GAP (두 칸 모두 차지) -->
+            <div class="cell-gap">
+              <div class="gap-title">1~2위 격차</div>
+              <div class="kpi">{gap_txt}</div>
             </div>
           </div>
         </div>
@@ -763,6 +776,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
