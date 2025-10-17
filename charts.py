@@ -350,7 +350,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     정렬 규칙(요청):
       ... → 2020 총선 비례 → 2022 대선 → 2022 광역 비례 → 2022 광역단체장 → ...
     """
-    import re  # 안전: 상단에 있어도 중복 import는 문제 없음
+    import re
     if ts is None or ts.empty:
         st.info("득표 추이 데이터가 없습니다."); return
     df = _norm_cols(ts.copy())
@@ -428,10 +428,8 @@ def render_vote_trend_chart(ts: pd.DataFrame):
             labels.insert(idx + 1, t)
         return labels
 
-    # 안전 가드: uniq가 비어 order가 없을 수 있음 → 빈 리스트로 초기화
     if order is None:
         order = []
-
     order = reorder_after(
         order,
         re.compile(r"^2020.*총선\s*비례"),
@@ -439,8 +437,6 @@ def render_vote_trend_chart(ts: pd.DataFrame):
          re.compile(r"^2022.*광역\s*비례"),
          re.compile(r"^2022.*광역단체장")]
     )
-
-    # ✅ 추가 안전 가드: order가 비거나 너무 짧으면 현재 데이터에서 기본 순서 생성
     if not order:
         order = (
             long_df.sort_values(["연도","선거타입","선거명_표시"])
@@ -451,10 +447,23 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     long_df["선거명_표시"] = pd.Categorical(long_df["선거명_표시"], categories=order, ordered=True)
     long_df = long_df.sort_values(["선거명_표시", "계열"]).reset_index(drop=True)
 
-    # ✅ 범례 항상 표시 (민주→보수→진보→기타 순서, 계열이 없어도 유지)
+    # ✅ 범례/색상: 항상 4개(민주→보수→진보→기타) 고정
     party_order = ["민주","보수","진보","기타"]
     color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
     colors = [color_map[p] for p in party_order]
+
+    # ✅ 더미 행 추가: 데이터에 없는 계열도 legend에 노출되도록
+    missing = [p for p in party_order if p not in long_df["계열"].unique().tolist()]
+    if missing:
+        # x축 기준 라벨 하나를 더미용으로 사용 (첫 항목)
+        first_x = order[0] if len(order) else (str(long_df["선거명_표시"].iloc[0]) if not long_df.empty else "기준")
+        stub = pd.DataFrame({
+            "선거명_표시": [first_x] * len(missing),
+            "계열": missing,
+            "득표율": [None] * len(missing),
+            # 선택적으로 연도/타입도 넣을 수 있으나 차트엔 영향 없음
+        })
+        long_df = pd.concat([long_df, stub], ignore_index=True)
 
     # selection (툴팁/하이라이트)
     sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
@@ -465,7 +474,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         y=alt.Y("득표율:Q", title="득표율(%)"),
         color=alt.Color("계열:N",
                         scale=alt.Scale(domain=party_order, range=colors),
-                        legend=alt.Legend(title=None, orient="top"))
+                        legend=alt.Legend(title=None, orient="top", values=party_order))  # ← 순서도 강제
     )
 
     hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
@@ -709,6 +718,7 @@ def render_prg_party_box(prg_row: pd.DataFrame|None=None, pop_row: pd.DataFrame|
             df_all = _load_index_df()
             if df_all is None or df_all.empty:
                 st.info("지표 소스(index_sample.csv)를 찾을 수 없습니다."); return
+            # FIX: _norm 함수 정의 누락으로 인한 NameError 발생 지점
             df_all.columns = [_norm(c) for c in df_all.columns]
             code_col = "code" if "code" in df_all.columns else None
             name_col = "region" if "region" in df_all.columns else None
@@ -722,6 +732,7 @@ def render_prg_party_box(prg_row: pd.DataFrame|None=None, pop_row: pd.DataFrame|
                     prg_row = df_all[df_all[name_col].astype(str).str.contains(key, na=False)].head(1)
             if prg_row is None or prg_row.empty: prg_row = df_all.head(1)
 
+        # FIX: _norm 함수 정의 누락으로 인한 NameError 발생 지점 (여기도 사용)
         df = prg_row.copy(); df.columns = [_norm(c) for c in df.columns]; r = df.iloc[0]
 
         def find_col_exact_or_compact(df, prefer_name, compact_key):
@@ -734,7 +745,7 @@ def render_prg_party_box(prg_row: pd.DataFrame|None=None, pop_row: pd.DataFrame|
         col_members  = find_col_exact_or_compact(df, "진보당 당원수", "진보당당원수")
         
         # 계산된 변수 (데이터가 없을 경우 예시 값 사용)
-        strength = _to_pct_float(r.get(col_strength)) if col_strength else 28.52 
+        strength = _to_pct_float(r.get(col_strength)) if col_strength else 28.52
         members  = _to_int(r.get(col_members)) if col_members else 123456
         
         # ------------------------------------------------------------------
@@ -743,19 +754,19 @@ def render_prg_party_box(prg_row: pd.DataFrame|None=None, pop_row: pd.DataFrame|
         
         html = f"""
         <div style="
-                  /* 1. 전체 폰트 패밀리: Noto Sans KR 적용 */
-                  font-family: 'Noto Sans KR', system-ui, sans-serif;
+                    /* 1. 전체 폰트 패밀리: Noto Sans KR 적용 */
+                    font-family: 'Noto Sans KR', system-ui, sans-serif;
 
-                  display:grid; grid-template-columns: 1fr 1fr;
-                  align-items:center; gap:12px; margin-top:6px;">
-                  
+                    display:grid; grid-template-columns: 1fr 1fr;
+                    align-items:center; gap:12px; margin-top:6px;">
+                    
             <div style="text-align:center; padding:8px 6px;">
                 <!-- 2. 제목 스타일: 색상: #6B7280, 두께: 600, 크기: 0.95rem -->
                 <div style="color:#6B7280; font-weight:600; font-size:0.95rem; margin-bottom:6px;">진보 득표력</div>
                 <!-- 3. 값 스타일: 두께: 800, 크기: 1.40rem, 색상: #111827 (강조) -->
                 <div style="font-weight:800; font-size:1.40rem; color:#111827;
                             letter-spacing:-0.2px; font-variant-numeric:tabular-nums;">
-                  {_fmt_pct(strength)}
+                    {_fmt_pct(strength)}
                 </div>
             </div>
             
@@ -765,35 +776,15 @@ def render_prg_party_box(prg_row: pd.DataFrame|None=None, pop_row: pd.DataFrame|
                 <!-- 3. 값 스타일: 두께: 800, 크기: 1.40rem, 색상: #111827 (강조) -->
                 <div style="font-weight:800; font-size:1.40rem; color:#111827;
                             letter-spacing:-0.2px; font-variant-numeric:tabular-nums;">
-                  { (f"{members:,}명" if isinstance(members,(int,float)) and members is not None else "N/A") }
+                    {members:,}명
                 </div>
             </div>
+            
         </div>
         """
-        # Streamlit 컴포넌트로 HTML 렌더링
-        html_component(html, height=CARD_HEIGHT, scrolling=False)
         
-        # ------------------------------------------------------------------
-        # --- 3. Altair 차트 렌더링 (사용자 코드) ---
-        # ------------------------------------------------------------------
-        
-        if strength is not None:
-            s01 = strength/100.0
-            gdf = pd.DataFrame({"항목":["진보 득표력"], "값":[s01]})
-            chart = (
-                alt.Chart(gdf)
-                .mark_bar()
-                .encode(
-                    x=alt.X("값:Q", axis=alt.Axis(title=None, format=".0%"), scale=alt.Scale(domain=[0,0.40])),
-                    y=alt.Y("항목:N", axis=alt.Axis(title=None, labels=False, ticks=False)),
-                    color=alt.value(COLOR_BLUE),
-                    tooltip=[alt.Tooltip("값:Q", title="진보 득표력", format=".1%")],
-                )
-                .properties(height=64, padding={"top":0,"left":6,"right":6,"bottom":2})
-            )
-            st.altair_chart(chart, use_container_width=True, theme=None)
-        else:
-            st.info("진보 득표력 지표가 없습니다.")
+        from streamlit.components.v1 import html as html_component
+        html_component(html, height=120, scrolling=False)
 
 # =============================
 # 지역 상세 레이아웃
@@ -840,6 +831,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
