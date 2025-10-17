@@ -811,7 +811,7 @@ def render_region_detail_layout(
         a, b = st.columns([1.6, 2.4])
         with a.container(border=True):
             st.markdown("**연령 구성**")
-            render_age_highlight_chart(df_pop, box_height_px=240, width_px=300)
+            render_age_highlight_chart(df_pop, box_height_px=240)
         with b.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
             render_sex_ratio_bar(df_pop, box_height_px=240)
@@ -827,4 +827,5 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
