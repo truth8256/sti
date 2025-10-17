@@ -189,7 +189,7 @@ def render_population_box(pop_df: pd.DataFrame):
 # - Center shows the selected segment’s %.
 # - No custom paddings.
 # =========================================================
-def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240, width_px: int = 300):
+def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 180, width_px: int = 300):
     df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df is None or df.empty:
         st.info("연령 구성 데이터가 없습니다."); return
@@ -273,7 +273,7 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
 # [Sex Composition by Age: Horizontal Bars]
 # - Keep default paddings; show standard legend.
 # =========================================================
-def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 240):
+def render_sex_ratio_bar(pop_df: pd.DataFrame, *, box_height_px: int = 180):
     if pop_df is None or pop_df.empty:
         st.info("성비 데이터를 표시할 수 없습니다. (population.csv 없음)")
         return
@@ -670,10 +670,10 @@ def render_region_detail_layout(
         a, b = st.columns([1.15, 2.85])
         with a.container(border=True):
             st.markdown("**연령 구성**")
-            render_age_highlight_chart(df_pop, box_height_px=240, width_px=300)
+            render_age_highlight_chart(df_pop, box_height_px=180, width_px=300)
         with b.container(border=True):
             st.markdown("**연령별, 성별 인구분포**")
-            render_sex_ratio_bar(df_pop, box_height_px=240)
+            render_sex_ratio_bar(df_pop, box_height_px=180)
 
     # Vote trend
     st.markdown("### 📈 정당성향별 득표추이")
@@ -688,3 +688,4 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
