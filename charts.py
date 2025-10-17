@@ -247,7 +247,14 @@ def render_population_box(pop_df: pd.DataFrame, *, box_height_px: int = 240):
 #    keep margin/height so it does not exceed container height.
 # =========================================================
 def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240):
-    """Age composition half-donut chart centered inside its container."""
+    """Age composition half-donut chart centered inside its container.
+    Notes:
+      - Center text uses absolute (x,y) via alt.value(W/2, H/2) to avoid layering errors.
+      - The chart itself is horizontally centered using st.columns.
+    How to change later:
+      - Adjust W/H to tune the visual size without affecting outer container height.
+      - Tweak text offsets (+/-) to fine-tune vertical alignment.
+    """
     df = _norm_cols(pop_df.copy()) if pop_df is not None else pd.DataFrame()
     if df.empty:
         st.info("연령 구성 데이터가 없습니다."); return
@@ -268,11 +275,13 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
     tot = float(df[total_col].sum())
     if tot <= 0: st.info("전체 유권자 수(분모)가 0입니다."); return
 
-    mid_60_64 = max(0.0, tot - (y + m + o))
+    mid_60_64 = max(0.0, tot - (y + m + o))  # remainder = 60–64
     labels_order = [Y, M, "60–64세", O]
     values = [y, m, mid_60_64, o]
 
-    ratios01, ratios100 = [v/tot for v in values], [(v/tot)*100 for v in values]
+    ratios01  = [v/tot for v in values]
+    ratios100 = [r*100 for r in ratios01]
+
     focus = st.radio("강조", [Y, M, O], index=0, horizontal=True, label_visibility="collapsed")
 
     inner_r, outer_r = 68, 106
@@ -285,28 +294,26 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
         "순서": [1, 2, 3, 4],
     })
 
-    # 반원 도넛
+    # --- Fixed inner chart size for stable center text coordinates ---
+    W = 320
+    H = max(200, int(box_height_px))  # keep inside the box height
+
     base = (
         alt.Chart(df_vis)
         .mark_arc(innerRadius=inner_r, outerRadius=outer_r, cornerRadius=6, stroke="white", strokeWidth=1)
         .encode(
-            theta=alt.Theta("비율:Q", stack=True, sort=None,
-                            scale=alt.Scale(range=[-math.pi/2, math.pi/2])),
+            theta=alt.Theta("비율:Q", stack=True, sort=None, scale=alt.Scale(range=[-math.pi/2, math.pi/2])),
             order=alt.Order("순서:Q"),
-            color=alt.Color("강조:N",
-                            scale=alt.Scale(domain=[True, False],
-                                            range=[COLOR_BLUE, "#E5E7EB"]),
-                            legend=None),
-            tooltip=[
-                alt.Tooltip("연령:N", title="연령대"),
-                alt.Tooltip("명:Q", title="인원", format=",.0f"),
-                alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f"),
-            ],
+            color=alt.Color("강조:N", scale=alt.Scale(domain=[True, False], range=[COLOR_BLUE, "#E5E7EB"]), legend=None),
+            tooltip=[alt.Tooltip("연령:N", title="연령대"),
+                     alt.Tooltip("명:Q", title="인원", format=",.0f"),
+                     alt.Tooltip("표시비율:Q", title="비율(%)", format=".1f")],
         )
+        .properties(width=W, height=H)
         .configure_view(stroke=None)
     )
 
-    # 중앙 텍스트 (도넛 중앙 위치)
+    # --- Center text with explicit (x,y) to avoid layering type errors ---
     idx = labels_order.index(focus)
     pct_txt = f"{ratios100[idx]:.1f}%"
     center_df = pd.DataFrame({"txt": [pct_txt], "sub": [focus]})
@@ -314,29 +321,23 @@ def render_age_highlight_chart(pop_df: pd.DataFrame, *, box_height_px: int = 240
     center_big = (
         alt.Chart(center_df)
         .mark_text(fontSize=20, fontWeight="bold", align="center", baseline="middle")
-        .encode(text="txt:N")
+        .encode(text="txt:N", x=alt.value(W/2), y=alt.value(H/2 - 8))
+        .properties(width=W, height=H)
     )
 
     center_small = (
         alt.Chart(center_df)
         .mark_text(fontSize=11, opacity=0.9, align="center", baseline="top")
-        .encode(text="sub:N")
+        .encode(text="sub:N", x=alt.value(W/2), y=alt.value(H/2 + 6))
+        .properties(width=W, height=H)
     )
 
     chart = (base + center_big + center_small).configure_view(stroke=None)
 
-    # 🔹 컨테이너 내부 중앙 정렬 (flexbox)
-    chart_html = chart.to_html()
-    centered_html = f"""
-    <div style="display:flex; justify-content:center; align-items:center; height:{box_height_px}px;">
-        {chart_html}
-    </div>
-    """
-    st.markdown(centered_html, unsafe_allow_html=True)
-
-    # NOTE (How to change later):
-    # - 중앙 정렬은 CSS flexbox로 구현됨. 높이(box_height_px)는 컨테이너 높이에 맞춤.
-    # - 텍스트 크기/위치는 mark_text(fontSize, baseline)으로 조정 가능.
+    # --- Center the whole chart block in the Streamlit container ---
+    col_left, col_mid, col_right = st.columns([1, 3, 1])
+    with col_mid:
+        st.altair_chart(chart, use_container_width=False, theme=None)
 
 # =========================================================
 # [Sex Composition by Age: Horizontal Bars]
@@ -827,5 +828,6 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
