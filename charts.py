@@ -115,8 +115,7 @@ def _inject_global_css():
       .k-kpi-title {{ color:#6B7280; font-weight:600; font-size:.95rem; }}
       .k-kpi-value {{ font-weight:800; font-size:1.18rem; color:#111827; letter-spacing:-0.2px; }}
       .k-box {{ border:1px solid #EEF2F7; border-radius:10px; padding:8px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
-      /* Remove unwanted top spacing inside Streamlit containers that host .k-eq children */
-      div[data-testid="stContainer"]:has(.k-eq) { padding-top:0 !important; margin-top:0 !important; }
+      div[data-testid="stContainer"]:has(.k-eq) {{ padding-top:0 !important; margin-top:0 !important; }}
       .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown p {{ margin-top:0 !important; }}
     </style>
     """, unsafe_allow_html=True)
@@ -844,6 +843,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
