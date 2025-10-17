@@ -377,7 +377,7 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         elif year_col: base_e = long_df[year_col].astype(str)
         else: st.warning("선거명을 식별할 컬럼이 필요합니다."); return
 
-    # Code → Korean label (best-effort)
+    # Code → Korean label
     def _norm_token(s: str) -> str:
         s = str(s).strip().replace("-","_").replace(" ","_").upper()
         return re.sub(r"_+","_", s)
@@ -395,9 +395,8 @@ def render_vote_trend_chart(ts: pd.DataFrame):
 
     long_df["선거명_표시"] = base_e.apply(to_kr)
     long_df = long_df.dropna(subset=["선거명_표시","계열","득표율"])
-    long_df["연도"] = pd.to_numeric(long_df["선거명_표시"].str.extract(r"^(20\d{2})")[0], errors="coerce")
 
-    # X order: by year, then type
+    long_df["연도"] = pd.to_numeric(long_df["선거명_표시"].str.extract(r"^(20\d{2})")[0], errors="coerce")
     def etype(s: str) -> str:
         if "대선" in s: return "대선"
         if "광역 비례" in s: return "광역 비례"
@@ -405,37 +404,78 @@ def render_vote_trend_chart(ts: pd.DataFrame):
         if "총선 비례" in s: return "총선 비례"
         return "기타"
     long_df["선거타입"] = long_df["선거명_표시"].astype(str).map(etype)
+
     type_rank = {"대선":1, "광역 비례":2, "광역단체장":3, "총선 비례":4, "기타":9}
     uniq = long_df[["선거명_표시","연도","선거타입"]].drop_duplicates().copy()
     uniq["순위"] = uniq["선거타입"].map(type_rank)
     uniq = uniq.sort_values(["연도","순위","선거명_표시"])
     order = uniq["선거명_표시"].dropna().astype(str).tolist()
 
+    def _first_label(labels, patt):
+        for s in labels:
+            if (hasattr(patt, "search") and patt.search(s)) or (isinstance(patt, str) and patt in s):
+                return s
+        return None
+    def reorder_after(base_list, anchor_pat, targets_in_order):
+        labels = base_list[:]
+        anchor = _first_label(labels, anchor_pat)
+        if not anchor: return labels
+        to_insert = []
+        for t in targets_in_order:
+            lab = _first_label(labels, t)
+            if lab:
+                labels.remove(lab); to_insert.append(lab)
+        idx = labels.index(anchor)
+        for t in reversed(to_insert):
+            labels.insert(idx + 1, t)
+        return labels
+
+    if order:
+        order = reorder_after(
+            order,
+            re.compile(r"^2020.*총선\s*비례"),
+            [re.compile(r"^2022.*대선"),
+             re.compile(r"^2022.*광역\s*비례"),
+             re.compile(r"^2022.*광역단체장")]
+        )
+    else:
+        order = (
+            long_df.sort_values(["연도","선거타입","선거명_표시"])
+                   ["선거명_표시"].astype(str).unique().tolist()
+        )
+
     long_df["선거명_표시"] = pd.Categorical(long_df["선거명_표시"], categories=order, ordered=True)
     long_df = long_df.sort_values(["선거명_표시", "계열"]).reset_index(drop=True)
 
-    # Legend/Color (fixed order) — simple, no hacks
+    # Legend/Color (fixed order)
     party_order = ["민주","보수","진보","기타"]
     color_map   = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
     colors      = [color_map[p] for p in party_order]
 
-    line = (
-        alt.Chart(long_df)
-        .mark_line(point=True, strokeWidth=2)
+    # Force legend to always appear (invisible layer)
+    first_x = order[0] if len(order) else (str(long_df["선거명_표시"].iloc[0]) if not long_df.empty else "기준")
+    legend_df = pd.DataFrame({"선거명_표시":[first_x]*len(party_order), "계열":party_order, "득표율":[None]*len(party_order)})
+    legend_chart = (
+        alt.Chart(legend_df)
+        .mark_point(opacity=0.001)
         .encode(
-            x=alt.X("선거명_표시:N", sort=None, axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
-            y=alt.Y("득표율:Q", title="득표율(%)"),
+            x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order), title=None),
+            y=alt.Y("득표율:Q"),
             color=alt.Color("계열:N",
                             scale=alt.Scale(domain=party_order, range=colors),
-                            legend=alt.Legend(title=None, orient="top", values=party_order)),
-            tooltip=[alt.Tooltip("선거명_표시:N", title="선거명"),
-                     alt.Tooltip("계열:N", title="계열"),
-                     alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
+                            legend=alt.Legend(title=None, orient="top", values=party_order))
         )
-        .properties(height=340)
-        .configure_view(stroke=None)
     )
-    
+
+    sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
+
+    line = alt.Chart(long_df).mark_line(point=False, strokeWidth=3).encode(
+        x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order),
+                axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
+        y=alt.Y("득표율:Q", title="득표율(%)"),
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)
+    )
+
     hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
         x=alt.X("선거명_표시:N", sort=None),
         y="득표율:Q",
@@ -452,7 +492,28 @@ def render_vote_trend_chart(ts: pd.DataFrame):
                  alt.Tooltip("득표율:Q", title="득표율(%)", format=".1f")]
     ).transform_filter(sel)
 
-    st.altair_chart(line.interactive(), use_container_width=True, theme=None)
+    # Year background bands (optional visual grouping by year)
+    years = sorted([y for y in long_df["연도"].unique().tolist() if pd.notna(y)])
+    bands = []
+    for y in years:
+        labels = [l for l in order if re.match(fr"^{int(y)}", str(l))]
+        if labels: bands.append({"f":labels[0], "t":labels[-1], "연도":int(y)})
+    if bands:
+        bg = alt.Chart(pd.DataFrame(bands)).mark_rect(opacity=0.06).encode(
+            x=alt.X("f:N", sort=None, scale=alt.Scale(domain=order), title=None),
+            x2="t:N",
+            color=alt.Color("연도:N", legend=None)
+        )
+        chart = (bg + legend_chart + line + hit + pts).properties(
+            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+        ).interactive()
+    else:
+        chart = (legend_chart + line + hit + pts).properties(
+            height=340, padding={"top": 0, "left": 8, "right": 8, "bottom": 8}
+        ).interactive()
+
+    with st.container(border=True):
+        st.altair_chart(chart, use_container_width=True)
 
 # =========================================================
 # [2024 Results Card]
@@ -708,6 +769,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
