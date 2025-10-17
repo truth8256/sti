@@ -437,35 +437,32 @@ def render_vote_trend_chart(ts: pd.DataFrame):
     long_df["선거명_표시"] = pd.Categorical(long_df["선거명_표시"], categories=order, ordered=True)
     long_df = long_df.sort_values(["선거명_표시", "계열"]).reset_index(drop=True)
 
-    party_order = ["민주","보수","진보","기타"]
-    color_map = {"민주":"#152484","보수":"#E61E2B","진보":"#7B2CBF","기타":"#6C757D"}
-    present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
-    colors  = [color_map[p] for p in present]
-
-    # 범례
+    # ✅ 범례 항상 표시 (민주→보수→진보→기타 순서, 계열이 없어도 유지)
     party_order = ["민주","보수","진보","기타"]
     color_map = {"민주":"#152484", "보수":"#E61E2B", "진보":"#7B2CBF", "기타":"#6C757D"}
-    present = [p for p in party_order if p in long_df["계열"].unique().tolist()]
-    colors  = [color_map[p] for p in present]
-    
+    colors = [color_map[p] for p in party_order]
+
+    sel = alt.selection_point(fields=["선거명_표시","계열"], nearest=True, on="mouseover", empty=False)
+
     line = alt.Chart(long_df).mark_line(point=False, strokeWidth=3).encode(
         x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order),
                 axis=alt.Axis(labelAngle=-32, labelOverlap=False, labelPadding=6, labelLimit=280), title="선거명"),
         y=alt.Y("득표율:Q", title="득표율(%)"),
-        color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors),
+        color=alt.Color("계열:N",
+                        scale=alt.Scale(domain=party_order, range=colors),
                         legend=alt.Legend(title=None, orient="top"))
     )
 
     hit = alt.Chart(long_df).mark_circle(size=600, opacity=0).encode(
-        x=alt.X("선거명_표시:N", sort=None),  # x축 정렬 충돌 방지
+        x=alt.X("선거명_표시:N", sort=None),
         y="득표율:Q",
-        color=alt.Color("계열:N", legend=None)
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None)
     ).add_params(sel)
 
     pts = alt.Chart(long_df).mark_circle(size=120).encode(
         x=alt.X("선거명_표시:N", sort=None, scale=alt.Scale(domain=order)),
         y="득표율:Q",
-        color=alt.Color("계열:N", scale=alt.Scale(domain=present, range=colors), legend=None),
+        color=alt.Color("계열:N", scale=alt.Scale(domain=party_order, range=colors), legend=None),
         opacity=alt.condition(sel, alt.value(1), alt.value(0)),
         tooltip=[alt.Tooltip("선거명_표시:N", title="선거명"),
                  alt.Tooltip("계열:N", title="계열"),
@@ -791,6 +788,7 @@ def render_region_detail_layout(
         render_incumbent_card(df_cur)
     with c3:
         render_prg_party_box(df_prg, df_pop)
+
 
 
 
